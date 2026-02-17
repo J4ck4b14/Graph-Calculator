@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:WpfTestApp"
         mc:Ignorable="d"
-        Title="Calculator" Height="700" Width="1000" Background="#FFF7F7F8">
+        Title="Calculator" Height="715" Width="1000" Background="#FFF7F7F8">
     <Window.Resources>
         <Style x:Key="CalcButton" TargetType="Button">
             <Setter Property="FontSize" Value="16"/>
@@ -14,6 +14,15 @@
             <Setter Property="MinWidth" Value="48"/>
             <Setter Property="MinHeight" Value="40"/>
             <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="#FFBDBDBD"/>
+        </Style>
+        <Style x:Key="TextButton" TargetType="Button">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Margin" Value="4"/>
+            <Setter Property="Padding" Value="4"/>
+            <Setter Property="MinWidth" Value="48"/>
+            <Setter Property="MinHeight" Value="30"/>
+            <Setter Property="Background" Value="#FFF7F7F8"/>
             <Setter Property="BorderBrush" Value="#FFBDBDBD"/>
         </Style>
     </Window.Resources>
@@ -25,22 +34,22 @@
         </Grid.ColumnDefinitions>
 
         <!-- Left column: controls -->
-        <StackPanel Grid.Column="0" Orientation="Vertical">
-            <TextBlock Text="Expression" FontWeight="Bold" Margin="0,0,0,4" />
-            <TextBox x:Name="ExpressionTextBox" FontSize="18" Height="44" VerticalContentAlignment="Center" />
+        <StackPanel Grid.Column="0" Orientation="Vertical" Margin="0,0,10,0">
+            <!-- <TextBlock Text="Expression" FontWeight="Bold" Margin="0,0,0,4" /> -->
+            <TextBox x:Name="ExpressionTextBox" FontSize="18" Height="50" VerticalContentAlignment="Center" Margin="0,8,0,0"/>
 
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,8">
-                <Button Style="{StaticResource CalcButton}" x:Name="EvalButton" Content="=" Width="62" Click="EvalButton_Click" />
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,8" Height="48">
+                <Button Style="{StaticResource CalcButton}" x:Name="EvalButton" Content="=" Width="62" Click="EvalButton_Click"/>
                 <Button Style="{StaticResource CalcButton}" x:Name="ClearButton" Content="C" Width="62" Click="ClearButton_Click" />
             </StackPanel>
 
-            <TextBlock Text="Result" FontWeight="Bold" Margin="0,0,0,4" />
-            <Border Background="White" BorderBrush="#FFE0E0E0" BorderThickness="1" Padding="6">
+
+            <!-- <TextBlock Text="Result" FontWeight="Bold" Margin="0,0,0,4" /> -->
+            <Border Background="White" BorderBrush="#FFE0E0E0" BorderThickness="1" Padding="6,6,6,6">
                 <TextBlock x:Name="ResultTextBlock" FontSize="16" TextTrimming="CharacterEllipsis" />
             </Border>
-
-            <TextBlock Text="Buttons" FontWeight="Bold" Margin="0,12,0,6" />
-            <UniformGrid Columns="6" Rows="5">
+            <!-- <TextBlock Text="Buttons" FontWeight="Bold" Margin="0,12,0,6" /> -->
+            <UniformGrid Columns="6" Rows="5" Margin="0,30,0,0">
                 <Button Style="{StaticResource CalcButton}" Content="7" Click="AppendButton_Click"/>
                 <Button Style="{StaticResource CalcButton}" Content="8" Click="AppendButton_Click"/>
                 <Button Style="{StaticResource CalcButton}" Content="9" Click="AppendButton_Click"/>
@@ -78,29 +87,29 @@
             </UniformGrid>
 
             <TextBlock Text="Functions" FontWeight="Bold" Margin="0,12,0,6" />
-            <StackPanel Orientation="Horizontal">
-                <Button Style="{StaticResource CalcButton}" Content="Add" Click="AddFunctionButton_Click" />
-                <Button Style="{StaticResource CalcButton}" Content="Remove" Click="RemoveFunctionButton_Click" />
-                <Button Style="{StaticResource CalcButton}" Content="Clear" Click="ClearFunctionsButton_Click" />
+            <StackPanel Orientation="Horizontal" Height="40">
+                <Button Style="{StaticResource TextButton}" Content="Add" Click="AddFunctionButton_Click" Height="25" />
+                <Button Style="{StaticResource TextButton}" Content="Remove" Click="RemoveFunctionButton_Click" Height="25" />
+                <Button Style="{StaticResource TextButton}" Content="Clear" Click="ClearFunctionsButton_Click" Height="25" />
             </StackPanel>
             <ListBox x:Name="FunctionsListBox" Height="120" Margin="0,6,0,0"/>
 
-            <StackPanel Orientation="Horizontal" Margin="0,12,0,0" VerticalAlignment="Bottom">
+            <StackPanel Orientation="Horizontal" Margin="0,12,0,0" VerticalAlignment="Bottom" HorizontalAlignment="Center">
                 <TextBlock VerticalAlignment="Center" Margin="0,0,8,0">Plot range:</TextBlock>
-                <TextBox x:Name="RangeStartTextBox" Width="80" Text="-10" Margin="0,0,4,0" />
-                <TextBox x:Name="RangeEndTextBox" Width="80" Text="10" Margin="0,0,8,0" />
-                <Button Style="{StaticResource CalcButton}" Content="Plot" Click="PlotButton_Click" />
+                <TextBox x:Name="RangeStartTextBox" Height="20" Width="50" Text="-10" TextAlignment="Center" Margin="0,0,4,0"/>
+                <TextBox x:Name="RangeEndTextBox" Height="20" Width="50" Text="10" TextAlignment="Center" Margin="0,0,8,0"/>
+                <Button Style="{StaticResource TextButton}" Content="Plot Graph" Click="PlotButton_Click" Margin="0,5,0,5" Height="25"/>
             </StackPanel>
         </StackPanel>
 
         <!-- Right column: plot area -->
-        <Border Grid.Column="1" Background="White" BorderBrush="#FFE6E6E6" BorderThickness="1" CornerRadius="6" Padding="8">
+        <Border Grid.Column="1" Background="White" BorderBrush="#FFE6E6E6" BorderThickness="1" CornerRadius="6" Padding="8" Margin="10,0,0,0">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <TextBlock Text="Plot" FontWeight="Bold" Margin="0,0,0,8" />
+                <TextBlock Text="Graph" Margin="0,0,0,8" FontSize="20" />
                 <Canvas x:Name="PlotCanvas" Grid.Row="1" Background="#FFF9FBFF" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" MinWidth="300" MinHeight="300">
                     <!-- Hover panel that displays current x and list of function values -->
                     <Border x:Name="HoverPanel" Visibility="Collapsed" Background="#CCFFFFFF" BorderBrush="#FFBDBDBD" BorderThickness="1" Padding="6" CornerRadius="4">
