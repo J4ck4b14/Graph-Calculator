@@ -1,7 +1,7 @@
-﻿<Application x:Class="WpfTestApp.App"
+<Application x:Class="GraphCalculator.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:local="clr-namespace:WpfTestApp"
+             xmlns:local="clr-namespace:GraphCalculator"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
          
