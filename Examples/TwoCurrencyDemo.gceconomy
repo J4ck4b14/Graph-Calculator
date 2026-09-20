@@ -1,0 +1,244 @@
+{
+  "Version": 3,
+  "Format": "GraphCalculator.Economy",
+  "Name": "Two-currency demo",
+  "Description": "Portable starter model showing two typed currencies and player cohorts.",
+  "SavedUtc": "2026-09-20T12:00:00Z",
+  "SimulationTime": 0,
+  "TimeStep": 0.1,
+  "PlaybackSpeed": 1,
+  "Seed": 1337,
+  "PredictionHorizon": 30,
+  "PredictionRuns": 500,
+  "Nodes": [
+    {
+      "Id": "11111111-1111-1111-1111-111111111111",
+      "Kind": "Source",
+      "Name": "Play",
+      "Resource": "Gold",
+      "Notes": "Ordinary gameplay faucet",
+      "X": 25,
+      "Y": 65,
+      "InitialAmount": 0,
+      "Amount": 0,
+      "Capacity": 0
+    },
+    {
+      "Id": "22222222-2222-2222-2222-222222222222",
+      "Kind": "Pool",
+      "Name": "Gold wallet",
+      "Resource": "Gold",
+      "Notes": "Soft currency",
+      "X": 230,
+      "Y": 55,
+      "InitialAmount": 150,
+      "Amount": 150,
+      "Capacity": 1200
+    },
+    {
+      "Id": "33333333-3333-3333-3333-333333333333",
+      "Kind": "Source",
+      "Name": "Premium faucet",
+      "Resource": "Gems",
+      "Notes": "Premium grants or purchases",
+      "X": 25,
+      "Y": 185,
+      "InitialAmount": 0,
+      "Amount": 0,
+      "Capacity": 0
+    },
+    {
+      "Id": "44444444-4444-4444-4444-444444444444",
+      "Kind": "Pool",
+      "Name": "Gem wallet",
+      "Resource": "Gems",
+      "Notes": "Premium currency",
+      "X": 230,
+      "Y": 180,
+      "InitialAmount": 20,
+      "Amount": 20,
+      "Capacity": 200
+    },
+    {
+      "Id": "55555555-5555-5555-5555-555555555555",
+      "Kind": "Sink",
+      "Name": "Upgrades",
+      "Resource": "Gold",
+      "Notes": "Progression sink",
+      "X": 485,
+      "Y": 55,
+      "InitialAmount": 0,
+      "Amount": 0,
+      "Capacity": 0
+    },
+    {
+      "Id": "66666666-6666-6666-6666-666666666666",
+      "Kind": "Sink",
+      "Name": "Cosmetics",
+      "Resource": "Gems",
+      "Notes": "Premium sink",
+      "X": 485,
+      "Y": 180,
+      "InitialAmount": 0,
+      "Amount": 0,
+      "Capacity": 0
+    }
+  ],
+  "Links": [
+    {
+      "Id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1",
+      "SourceId": "11111111-1111-1111-1111-111111111111",
+      "TargetId": "22222222-2222-2222-2222-222222222222",
+      "RateExpression": "baseincome",
+      "ConditionExpression": "1",
+      "Label": "",
+      "Efficiency": 1,
+      "Chance": 1,
+      "Interval": 0,
+      "Delay": 0,
+      "StartTime": 0,
+      "EndTime": 0,
+      "IsEnabled": true
+    },
+    {
+      "Id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2",
+      "SourceId": "22222222-2222-2222-2222-222222222222",
+      "TargetId": "55555555-5555-5555-5555-555555555555",
+      "RateExpression": "basespend+0.01*source",
+      "ConditionExpression": "source>0",
+      "Label": "",
+      "Efficiency": 1,
+      "Chance": 1,
+      "Interval": 0,
+      "Delay": 0,
+      "StartTime": 0,
+      "EndTime": 0,
+      "IsEnabled": true
+    },
+    {
+      "Id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa3",
+      "SourceId": "33333333-3333-3333-3333-333333333333",
+      "TargetId": "44444444-4444-4444-4444-444444444444",
+      "RateExpression": "premiumrate",
+      "ConditionExpression": "1",
+      "Label": "",
+      "Efficiency": 1,
+      "Chance": 1,
+      "Interval": 0,
+      "Delay": 0,
+      "StartTime": 0,
+      "EndTime": 0,
+      "IsEnabled": true
+    },
+    {
+      "Id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa4",
+      "SourceId": "44444444-4444-4444-4444-444444444444",
+      "TargetId": "66666666-6666-6666-6666-666666666666",
+      "RateExpression": "premiumspend",
+      "ConditionExpression": "source>0",
+      "Label": "",
+      "Efficiency": 1,
+      "Chance": 1,
+      "Interval": 0,
+      "Delay": 0,
+      "StartTime": 0,
+      "EndTime": 0,
+      "IsEnabled": true
+    }
+  ],
+  "Parameters": [
+    {
+      "Name": "baseincome",
+      "Minimum": 0,
+      "Maximum": 500,
+      "Value": 10
+    },
+    {
+      "Name": "basespend",
+      "Minimum": 0,
+      "Maximum": 500,
+      "Value": 8
+    },
+    {
+      "Name": "premiumrate",
+      "Minimum": 0,
+      "Maximum": 10,
+      "Value": 1
+    },
+    {
+      "Name": "premiumspend",
+      "Minimum": 0,
+      "Maximum": 10,
+      "Value": 1
+    }
+  ],
+  "Scenarios": [
+    {
+      "Name": "Baseline",
+      "ParameterValues": {
+        "baseincome": 10,
+        "basespend": 8,
+        "premiumrate": 1,
+        "premiumspend": 1
+      }
+    }
+  ],
+  "Cohorts": [
+    {
+      "Name": "Casual",
+      "Weight": 0.65,
+      "ParameterValues": {
+        "baseincome": 6.5,
+        "basespend": 5.6,
+        "premiumrate": 0.35,
+        "premiumspend": 1
+      }
+    },
+    {
+      "Name": "Core",
+      "Weight": 0.35,
+      "ParameterValues": {
+        "baseincome": 13.5,
+        "basespend": 10,
+        "premiumrate": 1.5,
+        "premiumspend": 1
+      }
+    }
+  ],
+  "Targets": [
+    {
+      "NodeId": "22222222-2222-2222-2222-222222222222",
+      "NodeName": "Gold wallet",
+      "Minimum": 100,
+      "Maximum": 500,
+      "Weight": 1
+    },
+    {
+      "NodeId": "44444444-4444-4444-4444-444444444444",
+      "NodeName": "Gem wallet",
+      "Minimum": 10,
+      "Maximum": 80,
+      "Weight": 1
+    }
+  ],
+  "AppVersion": "",
+  "PendingTransfers": [],
+  "NextActivations": {},
+  "LinkRandomStates": {},
+  "History": [
+    {
+      "Time": 0,
+      "Amounts": {
+        "11111111-1111-1111-1111-111111111111": 0,
+        "22222222-2222-2222-2222-222222222222": 150,
+        "33333333-3333-3333-3333-333333333333": 0,
+        "44444444-4444-4444-4444-444444444444": 20,
+        "55555555-5555-5555-5555-555555555555": 0,
+        "66666666-6666-6666-6666-666666666666": 0
+      }
+    }
+  ],
+  "SelectedScenario": "Baseline",
+  "SelectedCohort": "Casual",
+  "PopulationMix": false
+}

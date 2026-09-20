@@ -6,6 +6,11 @@ namespace GraphCalculator
 {
     public readonly record struct GraphPoint(double X, double Y);
 
+    public readonly record struct GraphSeriesSampleRequest(
+        CalculatorEngine.CompiledExpression Expression,
+        double? MinX,
+        double? MaxX);
+
     public static class GraphSampler
     {
         private const int MaxDepth = 5;
@@ -16,22 +21,29 @@ namespace GraphCalculator
             PlotViewport viewport,
             int pixelWidth,
             int pixelHeight,
+            IDictionary<string, double> variables,
+            double? domainMinX,
+            double? domainMaxX,
             CancellationToken cancellationToken)
         {
+            double minX = Math.Max(viewport.MinX, domainMinX ?? viewport.MinX);
+            double maxX = Math.Min(viewport.MaxX, domainMaxX ?? viewport.MaxX);
+            if (!(minX < maxX)) return new List<GraphPoint>();
+
             int intervals = Math.Clamp(pixelWidth / 10, 80, 260);
             var points = new List<GraphPoint>(Math.Min(pixelWidth * 2, MaxPoints));
 
-            double x0 = viewport.MinX;
-            double y0 = SafeEvaluate(expression, x0);
+            double x0 = minX;
+            double y0 = SafeEvaluate(expression, x0, variables);
             points.Add(new GraphPoint(x0, y0));
 
             for (int i = 1; i <= intervals && points.Count < MaxPoints; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                double x1 = viewport.MinX + viewport.Width * i / intervals;
-                double y1 = SafeEvaluate(expression, x1);
-                SampleInterval(expression, viewport, pixelHeight, x0, y0, x1, y1, 0, points, cancellationToken);
+                double x1 = minX + (maxX - minX) * i / intervals;
+                double y1 = SafeEvaluate(expression, x1, variables);
+                SampleInterval(expression, viewport, pixelHeight, variables, x0, y0, x1, y1, 0, points, cancellationToken);
                 x0 = x1;
                 y0 = y1;
             }
@@ -40,21 +52,26 @@ namespace GraphCalculator
         }
 
         public static (double minY, double maxY)? FindYBounds(
-            IEnumerable<CalculatorEngine.CompiledExpression> expressions,
+            IEnumerable<GraphSeriesSampleRequest> expressions,
             double minX,
             double maxX,
+            IDictionary<string, double> variables,
             CancellationToken cancellationToken)
         {
             var values = new List<double>();
             const int samples = 900;
 
-            foreach (var expression in expressions)
+            foreach (GraphSeriesSampleRequest request in expressions)
             {
+                double startX = Math.Max(minX, request.MinX ?? minX);
+                double endX = Math.Min(maxX, request.MaxX ?? maxX);
+                if (!(startX < endX)) continue;
+
                 for (int i = 0; i < samples; i++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    double x = minX + (maxX - minX) * i / (samples - 1);
-                    double y = SafeEvaluate(expression, x);
+                    double x = startX + (endX - startX) * i / (samples - 1);
+                    double y = SafeEvaluate(request.Expression, x, variables);
 
                     if (double.IsFinite(y) && Math.Abs(y) < 1e100)
                     {
@@ -88,6 +105,7 @@ namespace GraphCalculator
             CalculatorEngine.CompiledExpression expression,
             PlotViewport viewport,
             int pixelHeight,
+            IDictionary<string, double> variables,
             double x0,
             double y0,
             double x1,
@@ -100,16 +118,15 @@ namespace GraphCalculator
             cancellationToken.ThrowIfCancellationRequested();
 
             double midX = (x0 + x1) * 0.5;
-            double midY = SafeEvaluate(expression, midX);
+            double midY = SafeEvaluate(expression, midX, variables);
 
             if (depth < MaxDepth && ShouldSplit(viewport, pixelHeight, y0, midY, y1))
             {
-                SampleInterval(expression, viewport, pixelHeight, x0, y0, midX, midY, depth + 1, points, cancellationToken);
-                SampleInterval(expression, viewport, pixelHeight, midX, midY, x1, y1, depth + 1, points, cancellationToken);
+                SampleInterval(expression, viewport, pixelHeight, variables, x0, y0, midX, midY, depth + 1, points, cancellationToken);
+                SampleInterval(expression, viewport, pixelHeight, variables, midX, midY, x1, y1, depth + 1, points, cancellationToken);
                 return;
             }
 
-            // Keeping an invalid midpoint in the sample is useful: it breaks the line at domain holes.
             if (!double.IsFinite(midY) && double.IsFinite(y0) && double.IsFinite(y1))
             {
                 points.Add(new GraphPoint(midX, double.NaN));
@@ -143,11 +160,14 @@ namespace GraphCalculator
             return pixelHeight - (y - viewport.MinY) / viewport.Height * pixelHeight;
         }
 
-        private static double SafeEvaluate(CalculatorEngine.CompiledExpression expression, double x)
+        private static double SafeEvaluate(
+            CalculatorEngine.CompiledExpression expression,
+            double x,
+            IDictionary<string, double> variables)
         {
             try
             {
-                return expression.Evaluate(x);
+                return expression.Evaluate(x, variables);
             }
             catch
             {

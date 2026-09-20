@@ -50,17 +50,33 @@
         <Border Grid.Row="0" Background="White" BorderBrush="#FFE1E3E7" BorderThickness="0,0,0,1" Padding="18,12">
             <DockPanel LastChildFill="True">
                 <TextBlock Text="Graph Calculator" FontSize="22" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                <TextBlock x:Name="InteractionHintText"
-                           DockPanel.Dock="Right"
-                           Text="Scroll to zoom · drag to pan"
-                           Foreground="#FF6B7280"
-                           VerticalAlignment="Center"/>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <TextBlock Text="Workspace" Foreground="#FF6B7280" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <ComboBox x:Name="WorkspaceModeComboBox" Width="142" Height="30" SelectedIndex="0" Margin="0,0,8,0" SelectionChanged="WorkspaceModeComboBox_SelectionChanged">
+                        <ComboBoxItem Content="Function Lab"/>
+                        <ComboBoxItem Content="Curve Designer"/>
+                        <ComboBoxItem Content="Economy Designer"/>
+                    </ComboBox>
+                    <Button Style="{StaticResource ToolbarButton}" Content="Load" Click="LoadWorkspaceButton_Click"/>
+                    <Button Style="{StaticResource ToolbarButton}" Content="Save" Click="SaveWorkspaceButton_Click"/>
+                    <Button Style="{StaticResource ToolbarButton}" Content="Undo" Click="UndoWorkspaceButton_Click" ToolTip="Undo the last grouped edit"/>
+                    <Button Style="{StaticResource ToolbarButton}" Content="Redo" Click="RedoWorkspaceButton_Click" ToolTip="Redo the last undone edit"/>
+                    <TextBlock x:Name="ProjectDirtyText" Text="Saved" Margin="8,0,0,0" VerticalAlignment="Center" FontSize="10"/>
+                    <Button x:Name="RecoveryButton" Style="{StaticResource ToolbarButton}" Content="Recovery" Visibility="Collapsed" Click="RecoveryButton_Click" ToolTip="Restore the latest autosaved recovery state"/>
+                    <ComboBox x:Name="RecentWorkspaceComboBox" Width="115" Height="30" Margin="6,0,0,0" ToolTip="Recent workspaces"/>
+                    <Button Style="{StaticResource ToolbarButton}" Content="Open recent" Click="OpenRecentWorkspaceButton_Click"/>
+                    <TextBlock x:Name="InteractionHintText"
+                               Text="Scroll to zoom · drag to pan"
+                               Margin="14,0,0,0"
+                               Foreground="#FF6B7280"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
             </DockPanel>
         </Border>
 
         <Grid Grid.Row="1" Margin="12">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="360" MinWidth="250" MaxWidth="560"/>
+                <ColumnDefinition Width="410" MinWidth="290" MaxWidth="620"/>
                 <ColumnDefinition Width="6"/>
                 <ColumnDefinition Width="*" MinWidth="300"/>
             </Grid.ColumnDefinitions>
@@ -70,6 +86,8 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
@@ -110,6 +128,7 @@
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto"/>
                                             <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
                                         </Grid.RowDefinitions>
 
                                         <Ellipse Grid.Column="0"
@@ -125,7 +144,9 @@
                                                  Padding="6,5"
                                                  BorderBrush="#FFD6D9DE"
                                                  GotKeyboardFocus="ExpressionBox_GotKeyboardFocus"
-                                                 KeyDown="ExpressionBox_KeyDown"/>
+                                                 LostKeyboardFocus="ExpressionBox_LostKeyboardFocus"
+                                                 KeyDown="ExpressionBox_KeyDown"
+                                                 ToolTip="Ctrl+Space: function suggestions"/>
 
                                         <CheckBox Grid.Column="2"
                                                   IsChecked="{Binding IsVisible, UpdateSourceTrigger=PropertyChanged}"
@@ -139,7 +160,33 @@
                                                 ToolTip="Remove expression"
                                                 Click="RemoveExpressionButton_Click"/>
 
-                                        <TextBlock Grid.Row="1"
+                                        <WrapPanel Grid.Row="1"
+                                                   Grid.Column="1"
+                                                   Grid.ColumnSpan="3"
+                                                   Margin="6,6,0,0"
+                                                   VerticalAlignment="Center">
+                                            <TextBlock Text="Domain" Foreground="#FF7A818C" FontSize="11" VerticalAlignment="Center" Margin="0,0,7,0"/>
+                                            <TextBlock Text="{Binding DomainPrimaryLabel}" FontWeight="SemiBold" FontSize="11" VerticalAlignment="Center" Margin="0,0,3,0"/>
+                                            <TextBox Width="50" Padding="3,1" FontSize="11"
+                                                     ToolTip="Minimum domain value. Leave blank for no restriction; expressions such as -pi are allowed."
+                                                     Text="{Binding DomainMinX, UpdateSourceTrigger=PropertyChanged}"/>
+                                            <TextBlock Text="to" Foreground="#FF8A9099" FontSize="11" VerticalAlignment="Center" Margin="4,0"/>
+                                            <TextBox Width="50" Padding="3,1" FontSize="11" Margin="0,0,8,0"
+                                                     ToolTip="Maximum domain value. Leave blank for no restriction; expressions such as 2*pi are allowed."
+                                                     Text="{Binding DomainMaxX, UpdateSourceTrigger=PropertyChanged}"/>
+                                            <StackPanel Orientation="Horizontal" Visibility="{Binding DomainYVisibility}">
+                                                <TextBlock Text="{Binding DomainSecondaryLabel}" FontWeight="SemiBold" FontSize="11" VerticalAlignment="Center" Margin="0,0,3,0"/>
+                                                <TextBox Width="50" Padding="3,1" FontSize="11"
+                                                         ToolTip="Minimum secondary-domain value. Leave blank for no restriction."
+                                                         Text="{Binding DomainMinY, UpdateSourceTrigger=PropertyChanged}"/>
+                                                <TextBlock Text="to" Foreground="#FF8A9099" FontSize="11" VerticalAlignment="Center" Margin="4,0"/>
+                                                <TextBox Width="50" Padding="3,1" FontSize="11"
+                                                         ToolTip="Maximum secondary-domain value. Leave blank for no restriction."
+                                                         Text="{Binding DomainMaxY, UpdateSourceTrigger=PropertyChanged}"/>
+                                            </StackPanel>
+                                        </WrapPanel>
+
+                                        <TextBlock Grid.Row="2"
                                                    Grid.Column="1"
                                                    Grid.ColumnSpan="3"
                                                    Text="{Binding StatusText}"
@@ -153,7 +200,176 @@
                         </ListBox.ItemTemplate>
                     </ListBox>
 
-                    <Expander Grid.Row="2" Header="Keypad" Margin="2,10,2,0" IsExpanded="False">
+                    <Expander Grid.Row="2" Header="Preset library" Margin="2,10,2,0" IsExpanded="False">
+                        <StackPanel Margin="0,7,0,0">
+                            <ComboBox x:Name="PresetComboBox"
+                                      SelectionChanged="PresetComboBox_SelectionChanged"
+                                      HorizontalContentAlignment="Stretch">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                                            <TextBlock Text="{Binding Category}" Foreground="#FF8A9099" FontSize="10"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <TextBlock x:Name="PresetDescriptionText"
+                                       Foreground="#FF7A818C"
+                                       FontSize="11"
+                                       Margin="2,6,2,6"
+                                       TextWrapping="Wrap"/>
+                            <Button Content="Add preset"
+                                    HorizontalAlignment="Left"
+                                    Padding="10,4"
+                                    ToolTip="Adds the preset without removing the expressions already in the workspace"
+                                    Click="LoadPresetButton_Click"/>
+                            <Separator Margin="0,9,0,7"/>
+                            <TextBlock Text="Shared project assets" FontWeight="SemiBold"/>
+                            <TextBlock Text="Publish a curve/function once, then call AssetName(x) from Function Lab or Economy formulas." Foreground="#FF7A818C" FontSize="10" TextWrapping="Wrap" Margin="0,2,0,5"/>
+                            <WrapPanel><TextBox x:Name="SharedAssetNameTextBox" Width="110" Text="MyCurve" Padding="3,2"/><Button Content="Publish function" Padding="6,2" Margin="4,0,0,0" Click="PublishExpressionAssetButton_Click"/><Button Content="Publish curve" Padding="6,2" Margin="4,0,0,0" Click="PublishCurveAssetButton_Click"/></WrapPanel>
+                            <ListBox x:Name="SharedAssetsListBox" Height="70" Margin="0,5,0,0"/>
+                            <WrapPanel Margin="0,4,0,0"><Button Content="Insert call" Padding="6,2" Click="SharedAssetInsertButton_Click"/><Button Content="Delete" Padding="6,2" Margin="4,0,0,0" Click="SharedAssetDeleteButton_Click"/><Button Content="Import CSV table" Padding="6,2" Margin="4,0,0,0" Click="ImportTableButton_Click"/></WrapPanel>
+                            <ListBox x:Name="ImportedTablesListBox" Height="42" Margin="0,4,0,0" Visibility="Collapsed"/>
+                        </StackPanel>
+                    </Expander>
+
+                    <Expander x:Name="ParametersExpander"
+                              Grid.Row="3"
+                              Header="Parameters"
+                              Margin="2,10,2,0"
+                              IsExpanded="True"
+                              Visibility="Collapsed">
+                        <StackPanel Margin="0,7,0,0">
+                            <TextBlock Text="Named identifiers that are not plot axes or t/time become live parameters. Slider limits are also animation points A and B."
+                                       Foreground="#FF8A9099"
+                                       FontSize="11"
+                                       Margin="0,0,0,5"
+                                       TextWrapping="Wrap"/>
+                            <WrapPanel Margin="0,0,0,7">
+                                <Button Content="Capture A" Padding="7,3" Click="CaptureParameterStateAButton_Click"/>
+                                <Button Content="Capture B" Padding="7,3" Margin="5,0,0,0" Click="CaptureParameterStateBButton_Click"/>
+                                <TextBlock Text="Blend" Margin="9,0,4,0" VerticalAlignment="Center" Foreground="#FF7A818C"/>
+                                <Slider x:Name="ParameterStateBlendSlider" Width="105" Minimum="0" Maximum="1" ValueChanged="ParameterStateBlendSlider_ValueChanged"/>
+                                <TextBlock x:Name="ParameterStateBlendText" Text="0%" Width="34" Margin="4,0,0,0" VerticalAlignment="Center"/>
+                            </WrapPanel>
+                            <ItemsControl x:Name="ParametersItemsControl" ItemsSource="{Binding Parameters}">
+                                <ItemsControl.GroupStyle>
+                                    <GroupStyle>
+                                        <GroupStyle.HeaderTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Name}"
+                                                           FontSize="11"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="#FF6B7280"
+                                                           Margin="0,7,0,2"/>
+                                            </DataTemplate>
+                                        </GroupStyle.HeaderTemplate>
+                                    </GroupStyle>
+                                </ItemsControl.GroupStyle>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="#FFE3E6EA"
+                                                BorderThickness="0,0,0,1"
+                                                Padding="0,4,0,6"
+                                                Margin="0,0,0,2">
+                                            <Grid>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                </Grid.RowDefinitions>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="68"/>
+                                                    <ColumnDefinition Width="48"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="48"/>
+                                                    <ColumnDefinition Width="58"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <TextBox Text="{Binding DisplayName, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                                                         FontWeight="SemiBold"
+                                                         VerticalAlignment="Center"
+                                                         BorderThickness="0"
+                                                         Background="Transparent"
+                                                         Padding="1"
+                                                         ToolTip="{Binding Name}"/>
+                                                <TextBox Grid.Column="1"
+                                                         Text="{Binding Minimum, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                                                         Padding="3,2"
+                                                         ToolTip="A / slider minimum"
+                                                         HorizontalContentAlignment="Right"/>
+                                                <Slider Grid.Column="2"
+                                                        Minimum="{Binding Minimum}"
+                                                        Maximum="{Binding Maximum}"
+                                                        Value="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                        Margin="6,0"
+                                                        VerticalAlignment="Center"/>
+                                                <TextBox Grid.Column="3"
+                                                         Text="{Binding Maximum, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                                                         Padding="3,2"
+                                                         ToolTip="B / slider maximum"
+                                                         HorizontalContentAlignment="Right"/>
+                                                <TextBox Grid.Column="4"
+                                                         Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                                                         Padding="4,2"
+                                                         Margin="5,0,0,0"
+                                                         ToolTip="Current value"
+                                                         HorizontalContentAlignment="Right"
+                                                         VerticalContentAlignment="Center"/>
+
+                                                <WrapPanel Grid.Row="1"
+                                                           Grid.Column="0"
+                                                           Grid.ColumnSpan="5"
+                                                           Margin="0,5,0,0">
+                                                    <TextBlock Text="Group" Foreground="#FF7A818C" FontSize="10" VerticalAlignment="Center"/>
+                                                    <TextBox Width="55" Margin="3,0,6,0" Padding="3,1" FontSize="10" Text="{Binding Group, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"/>
+                                                    <TextBlock Text="Unit" Foreground="#FF7A818C" FontSize="10" VerticalAlignment="Center"/>
+                                                    <TextBox Width="38" Margin="3,0,6,0" Padding="3,1" FontSize="10" Text="{Binding Unit, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"/>
+                                                    <CheckBox Content="Lock" IsChecked="{Binding IsLocked, Mode=TwoWay}" Margin="0,0,7,0" VerticalAlignment="Center" ToolTip="Locked parameters ignore animation and A/B blending"/>
+                                                    <ToggleButton Content="Auto"
+                                                                  IsChecked="{Binding IsAnimating, Mode=TwoWay}"
+                                                                  MinWidth="45"
+                                                                  Padding="5,2"
+                                                                  ToolTip="Animate this parameter from A to B"/>
+                                                    <TextBlock Text="Speed"
+                                                               Foreground="#FF7A818C"
+                                                               FontSize="11"
+                                                               Margin="8,0,4,0"
+                                                               VerticalAlignment="Center"/>
+                                                    <TextBox Width="46"
+                                                             Text="{Binding AnimationSpeed, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                                                             Padding="3,2"
+                                                             HorizontalContentAlignment="Right"
+                                                             ToolTip="Parameter units per second"/>
+                                                    <TextBlock Text="/s"
+                                                               Foreground="#FF7A818C"
+                                                               FontSize="11"
+                                                               Margin="3,0,7,0"
+                                                               VerticalAlignment="Center"/>
+                                                    <ComboBox Width="88"
+                                                              SelectedValue="{Binding AnimationMode, Mode=TwoWay}"
+                                                              SelectedValuePath="Content"
+                                                              ToolTip="Animation behavior at point B">
+                                                        <ComboBoxItem Content="Loop"/>
+                                                        <ComboBoxItem Content="Ping-pong"/>
+                                                        <ComboBoxItem Content="Once"/>
+                                                    </ComboBox>
+                                                    <Button Content="↺"
+                                                            Width="28"
+                                                            Margin="5,0,0,0"
+                                                            Padding="2"
+                                                            Click="ResetParameterAnimationButton_Click"
+                                                            ToolTip="Return to point A"/>
+                                                </WrapPanel>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Expander>
+
+                    <Expander Grid.Row="4" Header="Keypad" Margin="2,10,2,0" IsExpanded="False">
                         <UniformGrid Columns="6" Margin="0,8,0,0">
                             <Button Style="{StaticResource KeyButton}" Content="7" Tag="7" Click="KeypadButton_Click"/>
                             <Button Style="{StaticResource KeyButton}" Content="8" Tag="8" Click="KeypadButton_Click"/>
@@ -196,16 +412,295 @@
                             <Button Style="{StaticResource KeyButton}" Content="max" Tag="max(" Click="KeypadButton_Click"/>
                             <Button Style="{StaticResource KeyButton}" Content="min" Tag="min(" Click="KeypadButton_Click"/>
                             <Button Style="{StaticResource KeyButton}" Content="floor" Tag="floor(" Click="KeypadButton_Click"/>
+
+                            <Button Style="{StaticResource KeyButton}" Content="clamp" Tag="clamp(" Click="KeypadButton_Click"/>
+                            <Button Style="{StaticResource KeyButton}" Content="lerp" Tag="lerp(" Click="KeypadButton_Click"/>
+                            <Button Style="{StaticResource KeyButton}" Content="smooth" Tag="smoothstep(" Click="KeypadButton_Click"/>
+                            <Button Style="{StaticResource KeyButton}" Content="frac" Tag="frac(" Click="KeypadButton_Click"/>
+                            <Button Style="{StaticResource KeyButton}" Content="sat" Tag="saturate(" Click="KeypadButton_Click"/>
+                            <Button Style="{StaticResource KeyButton}" Content="mod" Tag="mod(" Click="KeypadButton_Click"/>
                         </UniformGrid>
                     </Expander>
 
                     <TextBlock x:Name="ExamplesText"
-                               Grid.Row="3"
+                               Grid.Row="5"
                                Margin="2,10,2,0"
                                Text="Examples: 2x, sin(x), (x+1)(x-1), y = sqrt(x), 1e-6"
                                Foreground="#FF8A9099"
                                FontSize="11"
                                TextWrapping="Wrap"/>
+
+                    <Grid x:Name="CurveDesignerLeftPanel" Grid.RowSpan="6" Background="White" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Curve Designer" FontSize="18" FontWeight="SemiBold"/>
+                            <TextBlock Text="Author a response curve by placing keys. The generated result is a piecewise cubic Hermite function, so it stays useful outside this editor." Foreground="#FF7A818C" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,8"/>
+                            <WrapPanel>
+                                <TextBlock Text="New key" VerticalAlignment="Center" Foreground="#FF6B7280"/>
+                                <TextBox x:Name="CurveNewXTextBox" Width="55" Text="0" Margin="6,0,3,0" Padding="4,2" ToolTip="Exact X"/>
+                                <TextBox x:Name="CurveNewYTextBox" Width="55" Text="0" Margin="0,0,5,0" Padding="4,2" ToolTip="Exact Y"/>
+                                <Button Content="Add" Padding="7,2" Click="CurveAddExactButton_Click"/>
+                            </WrapPanel>
+                            <WrapPanel Margin="0,7,0,0">
+                                <CheckBox x:Name="CurveSnapCheckBox" Content="Snap" VerticalAlignment="Center"/>
+                                <TextBox x:Name="CurveSnapStepTextBox" Width="48" Text="0.1" Margin="5,0,8,0" Padding="3,1" ToolTip="Snap spacing"/>
+                                <Button Content="Delete key" Padding="7,2" Click="CurveDeleteKeyButton_Click"/>
+                                <Button Content="Clear" Padding="7,2" Margin="5,0,0,0" Click="CurveClearButton_Click"/>
+                            </WrapPanel>
+                            <WrapPanel Margin="0,7,0,0">
+                                <TextBlock Text="Channel" VerticalAlignment="Center" Foreground="#FF6B7280"/>
+                                <ComboBox x:Name="CurveChannelsComboBox" Width="110" Margin="5,0" SelectionChanged="CurveChannelsComboBox_SelectionChanged"/>
+                                <Button Content="+" Width="28" Click="CurveAddChannelButton_Click"/><Button Content="−" Width="28" Margin="3,0,0,0" Click="CurveDeleteChannelButton_Click"/>
+                                <TextBox x:Name="CurveChannelNameTextBox" Width="78" Margin="5,0,0,0" Padding="3,1" Text="Value" LostKeyboardFocus="CurveChannelNameTextBox_LostKeyboardFocus" ToolTip="Rename active channel"/>
+                            </WrapPanel>
+                            <WrapPanel Margin="0,6,0,0">
+                                <TextBlock Text="Auto tension" VerticalAlignment="Center" Foreground="#FF6B7280"/>
+                                <Slider x:Name="CurveTensionSlider" Width="145" Minimum="0" Maximum="1" Value="0" Margin="6,0" ValueChanged="CurveTensionSlider_ValueChanged"/>
+                                <TextBlock x:Name="CurveTensionText" Text="0.00" Width="38" VerticalAlignment="Center"/>
+                            </WrapPanel>
+                            <TextBlock Text="Outside the authored range" FontWeight="SemiBold" FontSize="11" Margin="0,9,0,3"/>
+                            <WrapPanel>
+                                <TextBlock Text="Before" VerticalAlignment="Center" Foreground="#FF6B7280"/>
+                                <ComboBox x:Name="CurveBeforeModeComboBox" Width="106" Margin="5,0,9,0" SelectionChanged="CurveWrapModeComboBox_SelectionChanged" ToolTip="What the curve does before its first key">
+                                    <ComboBoxItem Content="Clamp" Tag="Clamp"/>
+                                    <ComboBoxItem Content="Continue (tangent)" Tag="Continue"/>
+                                    <ComboBoxItem Content="Repeat" Tag="Repeat"/>
+                                    <ComboBoxItem Content="Ping-pong" Tag="PingPong"/>
+                                    <ComboBoxItem Content="Invert repeat" Tag="Invert"/>
+                                    <ComboBoxItem Content="Repeat + offset" Tag="RepeatOffset"/>
+                                </ComboBox>
+                                <TextBlock Text="After" VerticalAlignment="Center" Foreground="#FF6B7280"/>
+                                <ComboBox x:Name="CurveAfterModeComboBox" Width="106" Margin="5,0,0,0" SelectionChanged="CurveWrapModeComboBox_SelectionChanged" ToolTip="What the curve does after its last key">
+                                    <ComboBoxItem Content="Clamp" Tag="Clamp"/>
+                                    <ComboBoxItem Content="Continue (tangent)" Tag="Continue"/>
+                                    <ComboBoxItem Content="Repeat" Tag="Repeat"/>
+                                    <ComboBoxItem Content="Ping-pong" Tag="PingPong"/>
+                                    <ComboBoxItem Content="Invert repeat" Tag="Invert"/>
+                                    <ComboBoxItem Content="Repeat + offset" Tag="RepeatOffset"/>
+                                </ComboBox>
+                            </WrapPanel>
+                            <TextBlock Text="Clamp holds the endpoint. Continue follows its tangent. Repeat loops. Ping-pong reverses direction. Invert alternates the curve vertically. Repeat + offset repeats while preserving the net rise/fall." Foreground="#FF8A9099" FontSize="9.5" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                        </StackPanel>
+
+                        <DataGrid x:Name="CurveKeysDataGrid" Grid.Row="2" Margin="0,10,0,8" ItemsSource="{Binding CurveKeys}" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column" SelectionMode="Single" SelectionChanged="CurveKeysDataGrid_SelectionChanged" CellEditEnding="CurveKeysDataGrid_CellEditEnding">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="X" Binding="{Binding X, UpdateSourceTrigger=LostFocus}" Width="52"/>
+                                <DataGridTextColumn Header="Y" Binding="{Binding Y, UpdateSourceTrigger=LostFocus}" Width="52"/>
+                                <DataGridTemplateColumn Header="Tangent" Width="82">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <ComboBox SelectedValue="{Binding TangentMode, UpdateSourceTrigger=PropertyChanged}" SelectedValuePath="Content" SelectionChanged="CurveTangentModeComboBox_SelectionChanged">
+                                                <ComboBoxItem Content="Auto"/>
+                                                <ComboBoxItem Content="Linear"/>
+                                                <ComboBoxItem Content="Flat"/>
+                                                <ComboBoxItem Content="Manual"/>
+                                            </ComboBox>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTextColumn Header="In" Binding="{Binding InTangent, UpdateSourceTrigger=LostFocus}" Width="48"/>
+                                <DataGridTextColumn Header="Out" Binding="{Binding OutTangent, UpdateSourceTrigger=LostFocus}" Width="48"/>
+                                <DataGridTextColumn Header="In W" Binding="{Binding InWeight, UpdateSourceTrigger=LostFocus}" Width="44"/>
+                                <DataGridTextColumn Header="Out W" Binding="{Binding OutWeight, UpdateSourceTrigger=LostFocus}" Width="48"/>
+                                <DataGridCheckBoxColumn Header="Link" Binding="{Binding LinkedTangents}" Width="42"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+
+                        <StackPanel Grid.Row="3">
+                            <TextBlock Text="Curve definition" FontWeight="SemiBold"/>
+                            <TextBox x:Name="CurveDefinitionTextBox" Margin="0,4,0,0" Padding="5,3" IsReadOnly="True" TextWrapping="Wrap" Background="#FFF7F9FC" BorderBrush="#FFE1E5EB" FontSize="10.5"/>
+                            <Expander Header="Exact expanded formula" Margin="0,5,0,0" ToolTip="The literal piecewise equation used when sending the exact spline to Function Lab">
+                                <TextBox x:Name="CurveFormulaTextBox" Height="86" Margin="0,4,0,0" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="10"/>
+                            </Expander>
+                            <Expander Header="Similar analytic functions" IsExpanded="True" Margin="0,5,0,0">
+                                <StackPanel Margin="0,4,0,0">
+                                    <TextBlock Text="Orange dashed = selected approximation. Error is RMSE relative to the curve's Y range; suggestions fit the authored key range only." Foreground="#FF7A818C" FontSize="9.5" TextWrapping="Wrap" Margin="0,0,0,4"/>
+                                    <ListBox x:Name="CurveSuggestionsListBox" ItemsSource="{Binding CurveSuggestions}" Height="125" SelectionChanged="CurveSuggestionsListBox_SelectionChanged">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Margin="2,3">
+                                                    <DockPanel>
+                                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                                                        <TextBlock Text="{Binding ErrorText}" Foreground="#FFB45309" FontSize="10" Margin="8,0,0,0"/>
+                                                    </DockPanel>
+                                                    <TextBlock Text="{Binding Description}" Foreground="#FF6B7280" FontSize="9.5" TextWrapping="Wrap"/>
+                                                    <TextBlock Text="{Binding Formula}" FontFamily="Consolas" FontSize="9.5" TextTrimming="CharacterEllipsis" ToolTip="{Binding Formula}"/>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                    <WrapPanel Margin="0,4,0,0">
+                                        <Button Content="Add suggestion to Function Lab" Padding="7,2" Click="CurveUseSuggestionButton_Click"/>
+                                        <Button Content="Copy suggestion" Padding="7,2" Margin="5,0,0,0" Click="CurveCopySuggestionButton_Click"/>
+                                    </WrapPanel>
+                                </StackPanel>
+                            </Expander>
+                        </StackPanel>
+                        <WrapPanel Grid.Row="4" Margin="0,8,0,0">
+                            <Button Content="Copy exact formula" Padding="8,3" Click="CurveCopyFormulaButton_Click"/>
+                            <Button Content="Add exact spline to Function Lab" Padding="8,3" Margin="5,0,0,0" Click="CurveSendToFunctionLabButton_Click"/>
+                        </WrapPanel>
+                    </Grid>
+
+                    <ScrollViewer x:Name="EconomyDesignerLeftPanel" Grid.RowSpan="6" Background="White" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel Margin="0,0,4,4">
+                            <TextBlock Text="Economy Designer" FontSize="18" FontWeight="SemiBold"/>
+                            <TextBlock Text="Model typed resources, stochastic flows, schedules and player segments. Everything stays local and the economy can be shared as one portable project file." Foreground="#FF7A818C" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,8"/>
+
+                            <Expander Header="Quick guide — start here" IsExpanded="True" Margin="0,0,0,8">
+                                <Border Background="#FFF7F9FC" BorderBrush="#FFE1E5EB" BorderThickness="1" CornerRadius="5" Padding="7">
+                                    <StackPanel>
+                                        <TextBlock Text="1. Add a Source/Event, a Pool, and a Sink." FontSize="10.5"/>
+                                        <TextBlock Text="2. Turn on Connect; click the origin node, then the destination." FontSize="10.5" Margin="0,2,0,0"/>
+                                        <TextBlock Text="3. Select each flow and set its Rate. Unknown names become sliders." FontSize="10.5" Margin="0,2,0,0"/>
+                                        <TextBlock Text="4. Press ▶. Flow colour tells you the resource; moving dots show actual traffic." FontSize="10.5" Margin="0,2,0,0"/>
+                                        <TextBlock Text="5. Use Predictions for many runs and Balance search for target-driven tuning." FontSize="10.5" Margin="0,2,0,0"/>
+                                        <TextBlock Text="The README contains a beginner walkthrough and the full technical model." Foreground="#FF6B7280" FontSize="10" Margin="0,5,0,0" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                </Border>
+                            </Expander>
+
+                            <GroupBox Header="Economy project">
+                                <StackPanel Margin="6">
+                                    <TextBox x:Name="EconomyProjectNameTextBox" Text="Economy model" Padding="4,2" ToolTip="Project name stored in the .gceconomy file"/>
+                                    <TextBox x:Name="EconomyProjectDescriptionTextBox" Margin="0,5,0,0" Height="42" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" Padding="4,2" ToolTip="Optional notes for whoever opens this project later"/>
+                                    <WrapPanel Margin="0,5,0,0">
+                                        <Button Content="Save economy…" Padding="7,3" Click="EconomySaveProjectButton_Click"/>
+                                        <Button Content="Open economy…" Padding="7,3" Margin="5,0,0,0" Click="EconomyOpenProjectButton_Click"/>
+                                    </WrapPanel>
+                                </StackPanel>
+                            </GroupBox>
+
+                            <GroupBox Header="Diagram" Margin="0,8,0,0">
+                                <StackPanel Margin="6">
+                                    <TextBlock Text="Core" FontSize="10" Foreground="#FF7A818C" Margin="0,0,0,3"/>
+                                    <WrapPanel>
+                                        <Button Content="+ Source" Padding="7,3" Click="EconomyAddSourceButton_Click" ToolTip="Continuous or formula-driven resource faucet"/>
+                                        <Button Content="+ Pool" Padding="7,3" Margin="4,0,0,0" Click="EconomyAddPoolButton_Click" ToolTip="Stores a resource with an initial amount and capacity"/>
+                                        <Button Content="+ Converter" Padding="7,3" Margin="4,0,0,0" Click="EconomyAddConverterButton_Click" ToolTip="Processing/storage stage used for cross-resource conversion"/>
+                                        <Button Content="+ Action" Padding="7,3" Margin="4,0,0,0" Click="EconomyAddActionButton_Click" ToolTip="Explicit player/designer-triggered action"/>
+                                        <Button Content="+ Sink" Padding="7,3" Margin="4,0,0,0" Click="EconomyAddSinkButton_Click" ToolTip="Consumes a resource"/>
+                                    </WrapPanel>
+                                    <TextBlock Text="Logic / time" FontSize="10" Foreground="#FF7A818C" Margin="0,7,0,3"/>
+                                    <WrapPanel>
+                                        <Button Content="+ Event" Padding="7,3" Click="EconomyAddEventButton_Click" ToolTip="Source-like node intended for scheduled or chance-based events"/>
+                                        <Button Content="+ Gate" Padding="7,3" Margin="4,0,0,0" Click="EconomyAddGateButton_Click" ToolTip="Routing buffer; use outgoing flow conditions/chances to branch resources"/>
+                                        <Button Content="+ Queue" Padding="7,3" Margin="4,0,0,0" Click="EconomyAddQueueButton_Click" ToolTip="Storage stage intended for paced or delayed release"/>
+                                        <Button Content="+ Register" Padding="7,3" Margin="4,0,0,0" Click="EconomyAddRegisterButton_Click" ToolTip="Numeric state pool for counters, reputation, pressure or abstract values"/>
+                                        <ToggleButton x:Name="EconomyConnectToggle" Content="Connect" Padding="7,3" Margin="4,0,0,0" Checked="EconomyConnectToggle_Changed" Unchecked="EconomyConnectToggle_Changed"/>
+                                    </WrapPanel>
+                                    <WrapPanel Margin="0,7,0,0">
+                                        <ComboBox x:Name="EconomyExampleComboBox" Width="215" SelectedIndex="0">
+                                            <ComboBoxItem Content="Faucet / sink balance"/>
+                                            <ComboBoxItem Content="Inflation pressure"/>
+                                            <ComboBoxItem Content="Two-currency live service"/>
+                                            <ComboBoxItem Content="Random loot loop"/>
+                                            <ComboBoxItem Content="Seasonal event economy"/>
+                                            <ComboBoxItem Content="Crafting conversion chain"/>
+                                            <ComboBoxItem Content="Branching reward router"/>
+                                        </ComboBox>
+                                        <Button Content="Load example" Padding="7,2" Margin="5,0,0,0" Click="LoadEconomyExampleButton_Click"/>
+                                    </WrapPanel>
+                                    <WrapPanel Margin="0,7,0,0">
+                                        <Button Content="Group" Padding="6,2" Click="EconomyGroupSelectedButton_Click" ToolTip="Ctrl+click nodes, then group"/>
+                                        <Button Content="Copy" Padding="6,2" Margin="3,0,0,0" Click="EconomyCopySelectedButton_Click" ToolTip="Ctrl+C"/>
+                                        <Button Content="Paste" Padding="6,2" Margin="3,0,0,0" Click="EconomyPasteSelectedButton_Click" ToolTip="Ctrl+V"/>
+                                        <Button Content="Select all" Padding="6,2" Margin="3,0,0,0" Click="EconomySelectAllButton_Click"/>
+                                        <Button Content="Duplicate" Padding="6,2" Margin="3,0,0,0" Click="EconomyDuplicateSelectedButton_Click"/>
+                                        <Button Content="Align H" Padding="6,2" Margin="3,0,0,0" Click="EconomyAlignHorizontalButton_Click"/>
+                                        <Button Content="Align V" Padding="6,2" Margin="3,0,0,0" Click="EconomyAlignVerticalButton_Click"/>
+                                        <Button Content="Distribute" Padding="6,2" Margin="3,0,0,0" Click="EconomyDistributeButton_Click"/>
+                                        <TextBox x:Name="EconomyGridStepTextBox" Width="38" Text="20" Margin="5,0,0,0" Padding="2" ToolTip="Grid step"/><Button Content="Snap" Padding="6,2" Margin="3,0,0,0" Click="EconomySnapSelectedButton_Click"/>
+                                    </WrapPanel>
+                                    <TextBlock x:Name="EconomyConnectHintText" Text="Drag nodes to arrange them. Ctrl+click for multi-select." Foreground="#FF8A9099" FontSize="10" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </GroupBox>
+
+                            <GroupBox Header="Selected node" Margin="0,8,0,0">
+                                <Grid Margin="6">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="72"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                                    <TextBlock Text="Name" VerticalAlignment="Center"/><TextBox x:Name="EconomyNodeNameTextBox" Grid.Column="1" Padding="3,2" LostKeyboardFocus="EconomyNodeInspector_LostKeyboardFocus"/>
+                                    <TextBlock Grid.Row="1" Text="Resource" VerticalAlignment="Center"/><TextBox x:Name="EconomyNodeResourceTextBox" Grid.Row="1" Grid.Column="1" Padding="3,2" LostKeyboardFocus="EconomyNodeInspector_LostKeyboardFocus" ToolTip="Typed resource carried or stored by this node, e.g. Gold, Gems, XP"/>
+                                    <TextBlock Grid.Row="2" Text="Initial" VerticalAlignment="Center"/><TextBox x:Name="EconomyNodeInitialTextBox" Grid.Row="2" Grid.Column="1" Padding="3,2" LostKeyboardFocus="EconomyNodeInspector_LostKeyboardFocus"/>
+                                    <TextBlock Grid.Row="3" Text="Capacity" VerticalAlignment="Center"/><TextBox x:Name="EconomyNodeCapacityTextBox" Grid.Row="3" Grid.Column="1" Padding="3,2" LostKeyboardFocus="EconomyNodeInspector_LostKeyboardFocus"/>
+                                    <TextBlock Grid.Row="4" Text="Notes" VerticalAlignment="Top" Margin="0,4,0,0"/><TextBox x:Name="EconomyNodeNotesTextBox" Grid.Row="4" Grid.Column="1" Height="38" Margin="0,4,0,0" TextWrapping="Wrap" AcceptsReturn="True" Padding="3,2" LostKeyboardFocus="EconomyNodeInspector_LostKeyboardFocus"/>
+                                    <TextBlock x:Name="EconomyNodeKindHelpText" Grid.Row="5" Grid.ColumnSpan="2" Margin="0,6,0,0" FontSize="10" Foreground="#FF7A818C" TextWrapping="Wrap"/>
+                                </Grid>
+                                <Button Content="Trigger selected Action" Margin="6,5,6,6" Padding="7,2" Click="EconomyTriggerActionButton_Click"/>
+                            </GroupBox>
+
+                            <GroupBox Header="Subsystems / groups" Margin="0,8,0,0">
+                                <StackPanel Margin="6"><ListBox x:Name="EconomySubsystemsListBox" Height="56"/><WrapPanel Margin="0,4,0,0"><Button Content="Collapse / expand" Padding="6,2" Click="EconomyToggleSubsystemButton_Click"/><Button Content="Ungroup" Padding="6,2" Margin="4,0,0,0" Click="EconomyUngroupSelectedButton_Click"/></WrapPanel></StackPanel>
+                            </GroupBox>
+
+                            <GroupBox Header="Flows" Margin="0,8,0,0">
+                                <StackPanel Margin="6">
+                                    <ListBox x:Name="EconomyLinksListBox" Height="72" ItemsSource="{Binding EconomyLinks}" DisplayMemberPath="Display" SelectionChanged="EconomyLinksListBox_SelectionChanged"/>
+                                    <Grid Margin="0,5,0,0">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="66"/><ColumnDefinition Width="*"/><ColumnDefinition Width="66"/><ColumnDefinition Width="82"/></Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                                        <TextBlock Text="Label" VerticalAlignment="Center"/><TextBox x:Name="EconomyFlowLabelTextBox" Grid.Column="1" Grid.ColumnSpan="3" Padding="3,2" LostKeyboardFocus="EconomyFlowInspector_LostKeyboardFocus" ToolTip="Optional human-readable name shown on the diagram"/>
+                                        <TextBlock Grid.Row="1" Text="Rate" VerticalAlignment="Center"/><TextBox x:Name="EconomyRateTextBox" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3" Padding="3,2" TextChanged="EconomyRateTextBox_TextChanged" ToolTip="Units/second. Built-ins include t, dt, source, target, rand and gauss."/>
+                                        <TextBlock Grid.Row="2" Text="Condition" VerticalAlignment="Center"/><TextBox x:Name="EconomyConditionTextBox" Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="3" Padding="3,2" LostKeyboardFocus="EconomyFlowInspector_LostKeyboardFocus" ToolTip="Flow runs only when this expression is greater than zero."/>
+                                        <TextBlock Grid.Row="3" Text="Yield" VerticalAlignment="Center"/><TextBox x:Name="EconomyEfficiencyTextBox" Grid.Row="3" Grid.Column="1" Padding="3,2" LostKeyboardFocus="EconomyFlowInspector_LostKeyboardFocus"/>
+                                        <TextBlock Grid.Row="3" Grid.Column="2" Text="Chance" Margin="8,0,0,0" VerticalAlignment="Center"/><TextBox x:Name="EconomyChanceTextBox" Grid.Row="3" Grid.Column="3" Padding="3,2" LostKeyboardFocus="EconomyFlowInspector_LostKeyboardFocus" ToolTip="0..1 probability per activation"/>
+                                        <TextBlock Grid.Row="4" Text="Interval" VerticalAlignment="Center"/><TextBox x:Name="EconomyIntervalTextBox" Grid.Row="4" Grid.Column="1" Padding="3,2" LostKeyboardFocus="EconomyFlowInspector_LostKeyboardFocus" ToolTip="0 = continuous; otherwise fires every N simulation seconds"/>
+                                        <TextBlock Grid.Row="4" Grid.Column="2" Text="Delay" Margin="8,0,0,0" VerticalAlignment="Center"/><TextBox x:Name="EconomyDelayTextBox" Grid.Row="4" Grid.Column="3" Padding="3,2" LostKeyboardFocus="EconomyFlowInspector_LostKeyboardFocus"/>
+                                        <TextBlock Grid.Row="5" Text="Start / end" VerticalAlignment="Center"/><StackPanel Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="3" Orientation="Horizontal"><TextBox x:Name="EconomyStartTextBox" Width="72" Padding="3,2" LostKeyboardFocus="EconomyFlowInspector_LostKeyboardFocus"/><TextBlock Text="→" Margin="6,0" VerticalAlignment="Center"/><TextBox x:Name="EconomyEndTextBox" Width="72" Padding="3,2" LostKeyboardFocus="EconomyFlowInspector_LostKeyboardFocus" ToolTip="Blank or 0 end = no end time"/><CheckBox x:Name="EconomyFlowEnabledCheckBox" Content="Enabled" Margin="10,0,0,0" VerticalAlignment="Center" Checked="EconomyFlowEnabledCheckBox_Changed" Unchecked="EconomyFlowEnabledCheckBox_Changed"/></StackPanel>
+                                    </Grid>
+                                    <WrapPanel Margin="0,5,0,0"><TextBlock x:Name="EconomyFlowStatusText" Foreground="#FF8A9099" FontSize="10" Width="285" TextWrapping="Wrap"/><Button Content="Delete flow" Padding="6,2" Click="EconomyDeleteFlowButton_Click"/></WrapPanel>
+                                </StackPanel>
+                            </GroupBox>
+
+                            <GroupBox Header="Converter recipes" Margin="0,8,0,0">
+                                <StackPanel Margin="6">
+                                    <TextBlock Text="Atomic crafting: incoming/outgoing connections define ingredients/products; their numeric rates become amounts per craft." Foreground="#FF7A818C" FontSize="10" TextWrapping="Wrap"/>
+                                    <WrapPanel Margin="0,4,0,0"><TextBlock Text="crafts/s" VerticalAlignment="Center"/><TextBox x:Name="EconomyRecipeRateTextBox" Width="80" Text="1" Margin="4,0" Padding="3,2"/><Button Content="Build from selected Converter" Padding="6,2" Click="EconomyCreateRecipeButton_Click"/></WrapPanel>
+                                    <ListBox x:Name="EconomyRecipesListBox" Height="58" Margin="0,4,0,0"/><Button Content="Delete recipe" HorizontalAlignment="Left" Padding="6,2" Margin="0,4,0,0" Click="EconomyDeleteRecipeButton_Click"/>
+                                </StackPanel>
+                            </GroupBox>
+
+                            <GroupBox Header="Resource appearance" Margin="0,8,0,0">
+                                <StackPanel Margin="6"><ListBox x:Name="EconomyResourceStylesListBox" Height="58" SelectionChanged="EconomyResourceStylesListBox_SelectionChanged"/><WrapPanel Margin="0,4,0,0"><TextBlock Text="Color" VerticalAlignment="Center"/><TextBox x:Name="EconomyResourceColorTextBox" Width="72" Margin="3,0" Padding="2"/><TextBlock Text="Icon" VerticalAlignment="Center"/><TextBox x:Name="EconomyResourceIconTextBox" Width="35" Margin="3,0" Padding="2"/><TextBlock Text="Unit" VerticalAlignment="Center"/><TextBox x:Name="EconomyResourceUnitTextBox" Width="52" Margin="3,0" Padding="2"/><Button Content="Apply" Padding="6,2" Click="EconomyResourceStyleApplyButton_Click"/></WrapPanel></StackPanel>
+                            </GroupBox>
+
+                            <GroupBox Header="Economy parameters" Margin="0,8,0,0">
+                                <ItemsControl ItemsSource="{Binding EconomyParameters}" Margin="3">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="2,3">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="76"/><ColumnDefinition Width="44"/><ColumnDefinition Width="*"/><ColumnDefinition Width="44"/><ColumnDefinition Width="50"/></Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Name}" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                                                <TextBox Grid.Column="1" Text="{Binding Minimum, UpdateSourceTrigger=LostFocus}" Padding="2"/>
+                                                <Slider Grid.Column="2" Margin="4,0" Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" Value="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                                <TextBox Grid.Column="3" Text="{Binding Maximum, UpdateSourceTrigger=LostFocus}" Padding="2"/>
+                                                <TextBox Grid.Column="4" Margin="4,0,0,0" Text="{Binding Value, UpdateSourceTrigger=LostFocus}" Padding="2"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </GroupBox>
+
+                            <GroupBox Header="Scenarios &amp; player cohorts" Margin="0,8,0,0">
+                                <StackPanel Margin="6">
+                                    <TextBlock Text="Scenarios capture a tuning setup. Cohorts capture the same parameters for different player types." Foreground="#FF7A818C" FontSize="10" TextWrapping="Wrap"/>
+                                    <WrapPanel Margin="0,5,0,0"><TextBox x:Name="EconomyScenarioNameTextBox" Width="120" Text="Baseline" Padding="3,2"/><Button Content="Capture scenario" Padding="6,2" Margin="4,0,0,0" Click="EconomyCaptureScenarioButton_Click"/></WrapPanel>
+                                    <WrapPanel Margin="0,4,0,0"><ComboBox x:Name="EconomyScenarioComboBox" Width="150" DisplayMemberPath="Name"/><Button Content="Apply" Padding="6,2" Margin="4,0,0,0" Click="EconomyApplyScenarioButton_Click"/><Button Content="Delete" Padding="6,2" Margin="4,0,0,0" Click="EconomyDeleteScenarioButton_Click"/></WrapPanel>
+                                    <WrapPanel Margin="0,7,0,0"><TextBox x:Name="EconomyCohortNameTextBox" Width="105" Text="Casual" Padding="3,2"/><TextBlock Text="weight" Margin="6,0,3,0" VerticalAlignment="Center"/><TextBox x:Name="EconomyCohortWeightTextBox" Width="48" Text="1" Padding="3,2"/><Button Content="Capture cohort" Padding="6,2" Margin="4,0,0,0" Click="EconomyCaptureCohortButton_Click"/></WrapPanel>
+                                    <WrapPanel Margin="0,4,0,0"><ComboBox x:Name="EconomyCohortComboBox" Width="150" DisplayMemberPath="Name"/><Button Content="Apply" Padding="6,2" Margin="4,0,0,0" Click="EconomyApplyCohortButton_Click"/><Button Content="Delete" Padding="6,2" Margin="4,0,0,0" Click="EconomyDeleteCohortButton_Click"/></WrapPanel>
+                                </StackPanel>
+                            </GroupBox>
+
+                            <Button Content="Delete selected node" HorizontalAlignment="Left" Padding="8,3" Margin="0,8,0,0" Click="EconomyDeleteNodeButton_Click"/>
+                        </StackPanel>
+                    </ScrollViewer>
                 </Grid>
             </Border>
 
@@ -223,12 +718,18 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <DockPanel Margin="2,0,2,8">
-                        <TextBlock Text="Graph" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Grid Margin="2,0,2,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="GraphHeadingText" Text="Graph" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        <WrapPanel x:Name="FunctionGraphToolbar" Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center">
                             <TextBlock Text="Mode"
                                        Foreground="#FF6B7280"
                                        Margin="0,0,6,0"
@@ -246,13 +747,78 @@
                                        Foreground="#FF6B7280"
                                        Margin="0,0,10,0"
                                        VerticalAlignment="Center"/>
+                            <Button Style="{StaticResource ToolbarButton}" Content="Export CSV" Click="ExportCsvButton_Click"/>
+                            <Button Style="{StaticResource ToolbarButton}" Content="Engine export" Click="ExportEngineButton_Click"/>
+                            <ComboBox x:Name="RenderQualityComboBox" Width="82" Height="30" Margin="6,0,0,0" SelectedIndex="1" SelectionChanged="RenderQualityComboBox_SelectionChanged" ToolTip="Sampling/render quality">
+                                <ComboBoxItem Content="Draft"/>
+                                <ComboBoxItem Content="Normal"/>
+                                <ComboBoxItem Content="High"/>
+                                <ComboBoxItem Content="Ultra"/>
+                            </ComboBox>
+                            <Button Style="{StaticResource ToolbarButton}" Content="PNG" Click="CapturePngButton_Click" ToolTip="Capture the graph area as PNG"/>
+                            <Button Style="{StaticResource ToolbarButton}" Content="GIF" Click="CaptureGifButton_Click" ToolTip="Export one timeline loop as an animated GIF"/>
                             <Button Style="{StaticResource ToolbarButton}" Content="Fit graph" Click="FitGraphButton_Click"/>
                             <Button Style="{StaticResource ToolbarButton}" Content="Reset" Click="ResetViewButton_Click"/>
-                        </StackPanel>
-                    </DockPanel>
+                        </WrapPanel>
+                        <WrapPanel x:Name="CurveGraphToolbar" Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center" Visibility="Collapsed">
+                            <TextBlock x:Name="CurveGraphStatusText" Text="Click to place keys · drag keys or tangent handles" Foreground="#FF6B7280" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                            <Button Style="{StaticResource ToolbarButton}" Content="Fit curve" Click="FitCurveDesignerButton_Click"/>
+                            <Button Style="{StaticResource ToolbarButton}" Content="Reset view" Click="ResetViewButton_Click"/>
+                        </WrapPanel>
+                    </Grid>
+
+                    <Border x:Name="TimelinePanel"
+                            Grid.Row="1"
+                            Background="#FFF8F9FB"
+                            BorderBrush="#FFE3E6EA"
+                            BorderThickness="1"
+                            CornerRadius="5"
+                            Padding="8,6"
+                            Margin="2,0,2,8">
+                        <WrapPanel VerticalAlignment="Center">
+                            <TextBlock Text="Timeline" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,7,0"/>
+                            <Button Style="{StaticResource ToolbarButton}" Content="▶" Padding="8,3" Margin="0" Click="TimelinePlayButton_Click" ToolTip="Play"/>
+                            <Button Style="{StaticResource ToolbarButton}" Content="Ⅱ" Padding="8,3" Click="TimelinePauseButton_Click" ToolTip="Pause"/>
+                            <Button Style="{StaticResource ToolbarButton}" Content="■" Padding="8,3" Click="TimelineStopButton_Click" ToolTip="Stop and return to the start"/>
+                            <Slider x:Name="TimelineSlider" Width="165" Margin="9,0,5,0" Minimum="0" Maximum="10" ValueChanged="TimelineSlider_ValueChanged"/>
+                            <TextBlock Text="t" FontWeight="SemiBold" VerticalAlignment="Center" Margin="2,0"/>
+                            <TextBox x:Name="TimelineTimeTextBox" Width="55" Padding="3,2" Text="0" LostKeyboardFocus="TimelineSetting_LostKeyboardFocus"/>
+                            <TextBlock Text="range" Foreground="#FF7A818C" FontSize="11" VerticalAlignment="Center" Margin="8,0,3,0"/>
+                            <TextBox x:Name="TimelineStartTextBox" Width="48" Padding="3,2" Text="0" LostKeyboardFocus="TimelineSetting_LostKeyboardFocus"/>
+                            <TextBlock Text="to" Foreground="#FF7A818C" FontSize="11" VerticalAlignment="Center" Margin="3,0"/>
+                            <TextBox x:Name="TimelineEndTextBox" Width="48" Padding="3,2" Text="10" LostKeyboardFocus="TimelineSetting_LostKeyboardFocus"/>
+                            <TextBlock Text="speed" Foreground="#FF7A818C" FontSize="11" VerticalAlignment="Center" Margin="8,0,3,0"/>
+                            <TextBox x:Name="TimelineSpeedTextBox" Width="46" Padding="3,2" Text="1" LostKeyboardFocus="TimelineSetting_LostKeyboardFocus"/>
+                            <TextBlock Text="×" Foreground="#FF7A818C" VerticalAlignment="Center" Margin="2,0,5,0"/>
+                            <CheckBox x:Name="TimelineLoopCheckBox" Content="Loop" IsChecked="True" VerticalAlignment="Center" Checked="TimelineLoopCheckBox_Changed" Unchecked="TimelineLoopCheckBox_Changed"/>
+                        </WrapPanel>
+                    </Border>
+
+                    <Border x:Name="PlotRangePanel"
+                            Grid.Row="2"
+                            Background="#FFF8F9FB"
+                            BorderBrush="#FFE3E6EA"
+                            BorderThickness="1"
+                            CornerRadius="5"
+                            Padding="8,6"
+                            Margin="2,0,2,8">
+                        <WrapPanel VerticalAlignment="Center">
+                            <TextBlock Text="View" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Text="X" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                            <TextBox x:Name="PlotMinXTextBox" Width="62" Padding="4,2"/>
+                            <TextBlock Text="to" Foreground="#FF6B7280" VerticalAlignment="Center" Margin="5,0"/>
+                            <TextBox x:Name="PlotMaxXTextBox" Width="62" Padding="4,2" Margin="0,0,12,0"/>
+
+                            <TextBlock Text="Y" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                            <TextBox x:Name="PlotMinYTextBox" Width="62" Padding="4,2"/>
+                            <TextBlock Text="to" Foreground="#FF6B7280" VerticalAlignment="Center" Margin="5,0"/>
+                            <TextBox x:Name="PlotMaxYTextBox" Width="62" Padding="4,2"/>
+                            <Button Style="{StaticResource ToolbarButton}" Content="Apply range" Margin="8,0,0,0" Click="ApplyPlotRangeButton_Click"/>
+                        </WrapPanel>
+                    </Border>
 
                     <Border x:Name="SurfaceRangePanel"
-                            Grid.Row="1"
+                            Grid.Row="2"
                             Visibility="Collapsed"
                             Background="#FFF8F9FB"
                             BorderBrush="#FFE3E6EA"
@@ -279,11 +845,68 @@
                         </WrapPanel>
                     </Border>
 
+                    <Border x:Name="AnalysisToolsPanel"
+                            Grid.Row="3"
+                            Background="#FFF8F9FB"
+                            BorderBrush="#FFE3E6EA"
+                            BorderThickness="1"
+                            CornerRadius="5"
+                            Padding="8,6"
+                            Margin="2,0,2,8">
+                        <Grid>
+                            <WrapPanel x:Name="TwoDToolsPanel">
+                                <TextBlock Text="Inspect" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <CheckBox x:Name="ShowDerivativeCheckBox" Content="Derivative overlay" VerticalAlignment="Center" Margin="0,0,10,0" Checked="AnalysisOption_Changed" Unchecked="AnalysisOption_Changed"/>
+                                <CheckBox x:Name="ComparisonEnabledCheckBox" Content="Compare" VerticalAlignment="Center" Margin="0,0,6,0" Checked="AnalysisOption_Changed" Unchecked="AnalysisOption_Changed"/>
+                                <ComboBox x:Name="ComparisonAComboBox" Width="120" ItemsSource="{Binding Expressions}" DisplayMemberPath="Expression" SelectionChanged="AnalysisOption_Changed" ToolTip="Expression A"/>
+                                <ComboBox x:Name="ComparisonModeComboBox" Width="92" Margin="5,0" SelectedIndex="0" SelectionChanged="AnalysisOption_Changed">
+                                    <ComboBoxItem Content="A - B"/>
+                                    <ComboBoxItem Content="|A - B|"/>
+                                    <ComboBoxItem Content="A / B"/>
+                                </ComboBox>
+                                <ComboBox x:Name="ComparisonBComboBox" Width="120" ItemsSource="{Binding Expressions}" DisplayMemberPath="Expression" SelectionChanged="AnalysisOption_Changed" ToolTip="Expression B"/>
+                                <Button Content="Analyze A" Padding="7,2" Margin="6,0,0,0" Click="AnalyzeExpressionButton_Click" ToolTip="Find numerical roots and extrema; intersections use A and B"/>
+                                <Separator Width="10" Opacity="0"/>
+                                <CheckBox x:Name="FieldPreviewEnabledCheckBox" Content="Field preview" VerticalAlignment="Center" Checked="FieldPreviewOption_Changed" Unchecked="FieldPreviewOption_Changed"/>
+                                <ComboBox x:Name="FieldPreviewExpressionComboBox" Width="130" Margin="5,0" ItemsSource="{Binding Expressions}" DisplayMemberPath="Expression" SelectionChanged="FieldPreviewOption_Changed" ToolTip="2D scalar field / texture source"/>
+                                <ComboBox x:Name="FieldPreviewPaletteComboBox" Width="88" SelectedIndex="1" SelectionChanged="FieldPreviewOption_Changed">
+                                    <ComboBoxItem Content="Grayscale"/>
+                                    <ComboBoxItem Content="Signed"/>
+                                    <ComboBoxItem Content="Heat"/>
+                                </ComboBox>
+                                <Button Content="Export texture" Padding="7,2" Margin="5,0,0,0" Click="ExportFieldTextureButton_Click"/>
+                            </WrapPanel>
+
+                            <WrapPanel x:Name="ThreeDToolsPanel" Visibility="Collapsed">
+                                <TextBlock Text="Display" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                <ComboBox x:Name="SurfaceDisplayModeComboBox" Width="122" SelectedIndex="0" SelectionChanged="SurfaceDisplayModeComboBox_SelectionChanged">
+                                    <ComboBoxItem Content="Solid"/>
+                                    <ComboBoxItem Content="Wireframe"/>
+                                    <ComboBoxItem Content="Solid + wire"/>
+                                    <ComboBoxItem Content="Height bands"/>
+                                    <ComboBoxItem Content="Slope"/>
+                                    <ComboBoxItem Content="Normals"/>
+                                </ComboBox>
+                                <Separator Width="10" Opacity="0"/>
+                                <CheckBox x:Name="CrossSectionEnabledCheckBox" Content="Cross-section" VerticalAlignment="Center" Margin="0,0,6,0" Checked="CrossSectionOption_Changed" Unchecked="CrossSectionOption_Changed"/>
+                                <ComboBox x:Name="CrossSectionExpressionComboBox" Width="140" ItemsSource="{Binding Expressions}" DisplayMemberPath="Expression" SelectionChanged="CrossSectionOption_Changed" ToolTip="Scalar surface to slice"/>
+                                <ComboBox x:Name="CrossSectionAxisComboBox" Width="58" Margin="5,0" SelectedIndex="1" SelectionChanged="CrossSectionOption_Changed">
+                                    <ComboBoxItem Content="X"/>
+                                    <ComboBoxItem Content="Y"/>
+                                </ComboBox>
+                                <TextBox x:Name="CrossSectionValueTextBox" Width="58" Padding="3,2" Text="0" LostKeyboardFocus="CrossSectionValueTextBox_LostKeyboardFocus" ToolTip="Fixed axis value"/>
+                                <TextBlock Text="Right-click the surface to probe" Foreground="#FF7A818C" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                            </WrapPanel>
+                        </Grid>
+                    </Border>
+
                     <Grid x:Name="GraphSurface"
-                          Grid.Row="2"
+                          Grid.Row="4"
                           Background="#FFFBFCFE"
                           ClipToBounds="True"
                           SizeChanged="GraphSurface_SizeChanged">
+                        <Image x:Name="FieldPreviewImage" Visibility="Collapsed" Stretch="Fill" IsHitTestVisible="False" Opacity="0.88"/>
+
                         <Canvas x:Name="PlotCanvas"
                                 Background="Transparent"
                                 MouseMove="PlotCanvas_MouseMove"
@@ -298,7 +921,8 @@
                                     MouseLeftButtonDown="SurfaceViewport3D_MouseLeftButtonDown"
                                     MouseLeftButtonUp="SurfaceViewport3D_MouseLeftButtonUp"
                                     MouseMove="SurfaceViewport3D_MouseMove"
-                                    MouseWheel="SurfaceViewport3D_MouseWheel">
+                                    MouseWheel="SurfaceViewport3D_MouseWheel"
+                                    MouseRightButtonDown="SurfaceViewport3D_MouseRightButtonDown">
                             <Viewport3D.Camera>
                                 <PerspectiveCamera x:Name="SurfaceCamera"
                                                    FieldOfView="42"
@@ -334,6 +958,63 @@
                             </Border>
                         </Canvas>
 
+                        <Border x:Name="AnalysisResultsPanel"
+                                Visibility="Collapsed"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Bottom"
+                                Margin="10"
+                                Background="#F2FFFFFF"
+                                BorderBrush="#FFD0D4DA"
+                                BorderThickness="1"
+                                CornerRadius="5"
+                                Padding="8"
+                                IsHitTestVisible="False">
+                            <StackPanel>
+                                <TextBlock Text="Numerical analysis" FontWeight="SemiBold"/>
+                                <TextBlock x:Name="AnalysisResultsText" FontSize="11" Margin="0,3,0,0" TextWrapping="Wrap" MaxWidth="390"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border x:Name="SurfaceProbePanel"
+                                Visibility="Collapsed"
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Top"
+                                Margin="10"
+                                Background="#F2FFFFFF"
+                                BorderBrush="#FFD0D4DA"
+                                BorderThickness="1"
+                                CornerRadius="5"
+                                Padding="8"
+                                IsHitTestVisible="False">
+                            <StackPanel>
+                                <TextBlock Text="Probe" FontWeight="SemiBold"/>
+                                <TextBlock x:Name="SurfaceProbeText" FontSize="11" Margin="0,3,0,0" TextWrapping="Wrap" MaxWidth="310"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border x:Name="CrossSectionPreview"
+                                Visibility="Collapsed"
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Bottom"
+                                Margin="10"
+                                Width="300"
+                                Height="185"
+                                Background="#F2FFFFFF"
+                                BorderBrush="#FFD0D4DA"
+                                BorderThickness="1"
+                                CornerRadius="5"
+                                Padding="7"
+                                IsHitTestVisible="False">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <TextBlock x:Name="CrossSectionTitleText" Text="Cross-section" FontWeight="SemiBold" FontSize="11"/>
+                                <Canvas x:Name="CrossSectionCanvas" Grid.Row="1" Width="282" Height="145" Margin="0,5,0,0" Background="#FFFBFCFE"/>
+                            </Grid>
+                        </Border>
+
                         <Border x:Name="SurfaceLegend"
                                 Visibility="Collapsed"
                                 HorizontalAlignment="Right"
@@ -346,7 +1027,7 @@
                                 Padding="8"
                                 IsHitTestVisible="False">
                             <StackPanel>
-                                <TextBlock Text="3D surface: z = f(x, y)" FontWeight="SemiBold" Margin="0,0,0,3"/>
+                                <TextBlock Text="3D: z=f(x,y), curve3(...), surface(...) and implicit3(...)" FontWeight="SemiBold" Margin="0,0,0,3"/>
                                 <TextBlock FontSize="11">
                                     <Run Text="x" Foreground="#FFBE4A4A" FontWeight="SemiBold"/>
                                     <Run Text=" axis  ·  "/>
@@ -357,6 +1038,112 @@
                                 </TextBlock>
                             </StackPanel>
                         </Border>
+
+
+                        <Grid x:Name="EconomyWorkspacePanel" Grid.RowSpan="5" Background="White" Visibility="Collapsed">
+                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="2*"/><RowDefinition Height="1.15*"/></Grid.RowDefinitions>
+                            <Border Background="#FFF8F9FB" BorderBrush="#FFE3E6EA" BorderThickness="1" CornerRadius="5" Padding="8" Margin="2,0,2,8">
+                                <DockPanel>
+                                    <TextBlock Text="Economy simulation" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <WrapPanel DockPanel.Dock="Right">
+                                        <Button Style="{StaticResource ToolbarButton}" Content="▶" Click="EconomyPlayButton_Click"/>
+                                        <Button Style="{StaticResource ToolbarButton}" Content="Ⅱ" Click="EconomyPauseButton_Click"/>
+                                        <Button Style="{StaticResource ToolbarButton}" Content="Step" Click="EconomyStepButton_Click"/>
+                                        <Button Style="{StaticResource ToolbarButton}" Content="Reset" Click="EconomyResetButton_Click"/>
+                                        <Button x:Name="EconomyReplayToggleButton" Style="{StaticResource ToolbarButton}" Content="Replay" Click="EconomyReplayToggleButton_Click"/>
+                                        <Slider x:Name="EconomyReplaySlider" Width="120" Margin="5,0" IsEnabled="False" ValueChanged="EconomyReplaySlider_ValueChanged"/>
+                                        <Button Style="{StaticResource ToolbarButton}" Content="Export CSV" Click="EconomyExportCsvButton_Click"/>
+                                        <TextBlock Text="dt" Margin="10,0,4,0" VerticalAlignment="Center" Foreground="#FF6B7280"/>
+                                        <TextBox x:Name="EconomyDtTextBox" Width="52" Text="0.1" Padding="3,2"/>
+                                        <TextBlock Text="speed" Margin="8,0,4,0" VerticalAlignment="Center" Foreground="#FF6B7280"/>
+                                        <TextBox x:Name="EconomySpeedTextBox" Width="52" Text="1" Padding="3,2"/>
+                                        <TextBlock Text="seed" Margin="8,0,4,0" VerticalAlignment="Center" Foreground="#FF6B7280"/>
+                                        <TextBox x:Name="EconomySeedTextBox" Width="66" Text="1337" Padding="3,2"/>
+                                        <TextBlock x:Name="EconomyTimeText" Text="t = 0.00" Margin="10,0,0,0" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                                    </WrapPanel>
+                                </DockPanel>
+                            </Border>
+                            <Grid Grid.Row="1">
+                                <Canvas x:Name="EconomyCanvas" Background="#FFFBFCFE" ClipToBounds="True" SizeChanged="EconomyCanvas_SizeChanged" MouseLeftButtonDown="EconomyCanvas_MouseLeftButtonDown"/>
+                                <Border x:Name="EconomyResourceLegendBorder" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="10" Padding="7" Background="#EEFFFFFF" BorderBrush="#FFD0D4DA" BorderThickness="1" CornerRadius="5" IsHitTestVisible="False" Visibility="Collapsed">
+                                    <StackPanel>
+                                        <TextBlock Text="Resources" FontWeight="SemiBold" FontSize="10.5" Margin="0,0,0,3"/>
+                                        <StackPanel x:Name="EconomyResourceLegendPanel"/>
+                                        <TextBlock Text="Line colour = resource · moving packets = accepted transfers" Foreground="#FF7A818C" FontSize="9.5" Margin="0,4,0,0"/>
+                                        <TextBlock Text="◆ conversion · dashed = delayed · arrow/chevron = direction" Foreground="#FF7A818C" FontSize="9.2" Margin="0,1,0,0"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="10" Padding="8" Background="#EEFFFFFF" BorderBrush="#FFD0D4DA" BorderThickness="1" CornerRadius="5" IsHitTestVisible="False">
+                                    <TextBlock x:Name="EconomyDiagnosticsText" Text="Add nodes or load an example to begin." FontSize="11" TextWrapping="Wrap" MaxWidth="420"/>
+                                </Border>
+                            </Grid>
+                            <TabControl Grid.Row="2" Margin="0,8,0,0">
+                                <TabItem Header="History">
+                                    <Grid Margin="6">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="*"/>
+                                        </Grid.RowDefinitions>
+                                        <DockPanel>
+                                            <TextBlock Text="Resource history" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                            <WrapPanel DockPanel.Dock="Right">
+                                                <TextBlock Text="window (s)" VerticalAlignment="Center" Foreground="#FF6B7280"/>
+                                                <TextBox x:Name="EconomyHistoryWindowTextBox" Width="58" Text="30" Margin="4,0,8,0" Padding="3,2" TextChanged="EconomyHistoryDisplayTextChanged" ToolTip="Seconds of recent history to show. Use 0 for all recorded history."/>
+                                                <TextBlock Text="Y max" VerticalAlignment="Center" Foreground="#FF6B7280"/>
+                                                <TextBox x:Name="EconomyHistoryYMaxTextBox" Width="58" Text="auto" Margin="4,0,8,0" Padding="3,2" TextChanged="EconomyHistoryDisplayTextChanged" ToolTip="Type a positive number for a fixed Y scale, or 'auto'."/>
+                                                <CheckBox x:Name="EconomyHistoryCapacityCheckBox" Content="Capacities" IsChecked="False" Margin="2,0,8,0" VerticalAlignment="Center" Click="EconomyHistoryDisplayChanged" ToolTip="Show storage capacity guides."/>
+                                                <Button Content="All" Padding="6,2" Margin="2,0" Click="EconomyHistorySeriesAllButton_Click"/>
+                                                <Button Content="None" Padding="6,2" Margin="2,0" Click="EconomyHistorySeriesNoneButton_Click"/>
+                                            </WrapPanel>
+                                        </DockPanel>
+                                        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" MaxHeight="54" Margin="0,5,0,0">
+                                            <WrapPanel x:Name="EconomyHistorySeriesPanel"/>
+                                        </ScrollViewer>
+                                        <Canvas x:Name="EconomyChartCanvas" Grid.Row="2" Background="#FFFBFCFE" Margin="0,5,0,0" SizeChanged="EconomyChartCanvas_SizeChanged"/>
+                                    </Grid>
+                                </TabItem>
+                                <TabItem Header="Predictions">
+                                    <Grid Margin="8">
+                                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                                        <WrapPanel>
+                                            <TextBlock Text="runs" VerticalAlignment="Center"/><TextBox x:Name="EconomyPredictionRunsTextBox" Width="58" Text="500" Margin="4,0,8,0" Padding="3,2"/>
+                                            <TextBlock Text="horizon" VerticalAlignment="Center"/><TextBox x:Name="EconomyPredictionHorizonTextBox" Width="60" Text="30" Margin="4,0,8,0" Padding="3,2"/>
+                                            <CheckBox x:Name="EconomyPopulationMixCheckBox" Content="Population mix" Margin="4,0,8,0" VerticalAlignment="Center" ToolTip="Choose cohorts according to their weights on each run"/>
+                                            <Button x:Name="EconomyRunPredictionButton" Content="Run prediction" Padding="8,3" Click="EconomyRunPredictionButton_Click"/>
+                                            <Button x:Name="EconomyCancelPredictionButton" Content="Cancel" Padding="8,3" Margin="4,0,0,0" Click="EconomyCancelPredictionButton_Click" IsEnabled="False"/>
+                                        </WrapPanel>
+                                        <TextBox x:Name="EconomyPredictionResultsTextBox" Grid.Row="1" Margin="0,6,0,0" IsReadOnly="True" FontFamily="Consolas" FontSize="11" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
+                                    </Grid>
+                                </TabItem>
+                                <TabItem Header="Debugger">
+                                    <Grid Margin="8"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                                        <WrapPanel><Button Content="Break on selected flow" Padding="7,2" Click="EconomyBreakpointButton_Click"/><TextBlock x:Name="EconomyBreakpointText" Text="No breakpoint" Margin="8,0" VerticalAlignment="Center" Foreground="#FF6B7280"/><Button Content="Clear log" Padding="7,2" Click="EconomyClearDebuggerButton_Click"/></WrapPanel>
+                                        <ListBox x:Name="EconomyDebuggerListBox" Grid.Row="1" Margin="0,6,0,0" FontFamily="Consolas" FontSize="10"><ListBox.ItemTemplate><DataTemplate><StackPanel Margin="0,1"><TextBlock TextWrapping="Wrap"><Run Text="{Binding Time, StringFormat=t={0:0.###}  }"/><Run Text="{Binding Flow}"/><Run Text="{Binding Reason, StringFormat=  · {0}}"/></TextBlock><TextBlock Text="{Binding Detail}" Foreground="#FF6B7280" FontSize="9" TextWrapping="Wrap"/></StackPanel></DataTemplate></ListBox.ItemTemplate></ListBox>
+                                    </Grid>
+                                </TabItem>
+                                <TabItem Header="Sensitivity">
+                                    <Grid Margin="8"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions><WrapPanel><Button x:Name="EconomySensitivityButton" Content="Analyse selected target" Padding="8,3" Click="EconomySensitivityButton_Click"/><TextBlock Text="Perturbs each free parameter by 5% of its range using a common seed." Margin="8,0" VerticalAlignment="Center" Foreground="#FF6B7280"/></WrapPanel><TextBox x:Name="EconomySensitivityTextBox" Grid.Row="1" Margin="0,6,0,0" IsReadOnly="True" FontFamily="Consolas" FontSize="11" VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"/></Grid>
+                                </TabItem>
+                                <TabItem Header="Balance search">
+                                    <Grid Margin="8">
+                                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                                        <WrapPanel>
+                                            <TextBlock Text="Target" VerticalAlignment="Center"/><ComboBox x:Name="EconomyTargetNodeComboBox" Width="135" Margin="4,0" DisplayMemberPath="Name"/>
+                                            <TextBlock Text="min" VerticalAlignment="Center"/><TextBox x:Name="EconomyTargetMinTextBox" Width="58" Text="0" Margin="4,0" Padding="3,2"/>
+                                            <TextBlock Text="max" VerticalAlignment="Center"/><TextBox x:Name="EconomyTargetMaxTextBox" Width="58" Text="100" Margin="4,0" Padding="3,2"/>
+                                            <Button Content="Add target" Padding="7,2" Margin="4,0" Click="EconomyAddTargetButton_Click"/>
+                                            <Button Content="Remove" Padding="7,2" Click="EconomyDeleteTargetButton_Click"/>
+                                        </WrapPanel>
+                                        <WrapPanel Grid.Row="1" Margin="0,5,0,0">
+                                            <ListBox x:Name="EconomyTargetsListBox" Width="280" Height="54" ItemsSource="{Binding EconomyTargets}" DisplayMemberPath="Display"/>
+                                            <StackPanel Margin="8,0,0,0"><WrapPanel><TextBlock Text="candidates" VerticalAlignment="Center"/><TextBox x:Name="EconomyOptimizationCandidatesTextBox" Width="58" Text="300" Margin="4,0" Padding="3,2"/><Button x:Name="EconomyOptimizationSearchButton" Content="Search" Padding="8,2" Click="EconomyOptimizeButton_Click"/><Button x:Name="EconomyCancelOptimizationButton" Content="Cancel" Padding="8,2" Margin="4,0,0,0" Click="EconomyCancelOptimizationButton_Click" IsEnabled="False"/><Button x:Name="EconomyApplyOptimizationButton" Content="Apply best" Padding="8,2" Margin="4,0,0,0" Click="EconomyApplyOptimizationButton_Click" IsEnabled="False"/></WrapPanel><TextBlock Text="Searches parameter min/max ranges; selected scenario/cohort overrides stay fixed." FontSize="10" Foreground="#FF7A818C" Margin="0,3,0,0"/></StackPanel>
+                                        </WrapPanel>
+                                        <TextBox x:Name="EconomyOptimizationResultsTextBox" Grid.Row="2" Margin="0,6,0,0" IsReadOnly="True" FontFamily="Consolas" FontSize="11" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
+                                    </Grid>
+                                </TabItem>
+                            </TabControl>
+                        </Grid>
                     </Grid>
                 </Grid>
             </Border>

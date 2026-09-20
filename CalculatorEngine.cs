@@ -55,9 +55,24 @@ namespace GraphCalculator
                 return EvaluateRpn(_rpn, x, y, null);
             }
 
+            public double Evaluate(double x, IDictionary<string, double> variables)
+            {
+                return EvaluateRpn(_rpn, x, null, variables);
+            }
+
+            public double Evaluate(double x, double y, IDictionary<string, double> variables)
+            {
+                return EvaluateRpn(_rpn, x, y, variables);
+            }
+
             public double Evaluate(IDictionary<string, double> variables)
             {
                 return EvaluateRpn(_rpn, null, null, variables);
+            }
+
+            public string ToHlsl()
+            {
+                return BuildHlsl(_rpn);
             }
         }
 
@@ -97,7 +112,10 @@ namespace GraphCalculator
                 .Replace('−', '-');
 
             int equalsIndex = text.IndexOf('=');
-            if (equalsIndex >= 0)
+            bool looksLikeAssignment = equalsIndex >= 0
+                && (equalsIndex + 1 >= text.Length || text[equalsIndex + 1] != '=')
+                && (equalsIndex == 0 || text[equalsIndex - 1] is not ('<' or '>' or '!' or '='));
+            if (looksLikeAssignment)
             {
                 string left = text[..equalsIndex].Replace(" ", string.Empty).ToLowerInvariant();
                 if (left is "y" or "z" or "f(x)" or "f(x,y)")
@@ -181,9 +199,31 @@ namespace GraphCalculator
                     case '*':
                     case '/':
                     case '^':
-                        tokens.Add(new Token(TokenType.Operator, c.ToString()));
+                    case '<':
+                    case '>':
+                    case '=':
+                    case '!':
+                    {
+                        string op = c.ToString();
+                        if (i + 1 < expression.Length && expression[i + 1] == '='
+                            && c is '<' or '>' or '=' or '!')
+                        {
+                            op += "=";
+                            i++;
+                        }
+                        else if (c == '=')
+                        {
+                            op = "==";
+                        }
+                        else if (c == '!')
+                        {
+                            throw new FormatException("Use != for inequality or not(...) for logical negation");
+                        }
+
+                        tokens.Add(new Token(TokenType.Operator, op));
                         i++;
                         break;
+                    }
                     case '(':
                         tokens.Add(new Token(TokenType.LeftParen, "("));
                         i++;
@@ -344,10 +384,11 @@ namespace GraphCalculator
         {
             return op switch
             {
-                "^" => 4,
-                "u-" => 3,
-                "*" or "/" => 2,
-                "+" or "-" => 1,
+                "^" => 5,
+                "u-" => 4,
+                "*" or "/" => 3,
+                "+" or "-" => 2,
+                "<" or ">" or "<=" or ">=" or "==" or "!=" => 1,
                 _ => 0
             };
         }
@@ -385,17 +426,10 @@ namespace GraphCalculator
                             if (count < function.Arity)
                                 throw new FormatException($"Function {name} expects {function.Arity} arguments");
 
-                            if (function.Arity == 1)
-                            {
-                                double a = stack[--count];
-                                stack[count++] = function.Unary!(a);
-                            }
-                            else
-                            {
-                                double b = stack[--count];
-                                double a = stack[--count];
-                                stack[count++] = function.Binary!(a, b);
-                            }
+                            int argumentStart = count - function.Arity;
+                            double functionValue = function.Evaluate(stack, argumentStart);
+                            count = argumentStart;
+                            stack[count++] = functionValue;
                         }
                         else if (name == "pi")
                         {
@@ -467,6 +501,87 @@ namespace GraphCalculator
             return false;
         }
 
+        private static string BuildHlsl(IReadOnlyList<Token> rpn)
+        {
+            var stack = new Stack<string>();
+
+            foreach (Token token in rpn)
+            {
+                if (token.Type == TokenType.Number)
+                {
+                    stack.Push(token.Text.Contains('.') || token.Text.IndexOf('e') >= 0 || token.Text.IndexOf('E') >= 0
+                        ? token.Text
+                        : token.Text + ".0");
+                    continue;
+                }
+
+                if (token.Type == TokenType.Identifier)
+                {
+                    string name = token.Text.ToLowerInvariant();
+                    if (name == "pi") { stack.Push("3.141592653589793"); continue; }
+                    if (name == "e") { stack.Push("2.718281828459045"); continue; }
+
+                    if (Functions.TryGet(name, out FunctionDefinition? function))
+                    {
+                        if (stack.Count < function.Arity) throw new FormatException($"Function {name} expects {function.Arity} arguments");
+                        var args = new string[function.Arity];
+                        for (int i = function.Arity - 1; i >= 0; i--) args[i] = stack.Pop();
+                        stack.Push(FunctionToHlsl(name, args));
+                    }
+                    else
+                    {
+                        stack.Push(token.Text);
+                    }
+                    continue;
+                }
+
+                if (token.Type != TokenType.Operator) continue;
+                if (token.Text == "u-")
+                {
+                    string value = stack.Pop();
+                    stack.Push($"(-({value}))");
+                    continue;
+                }
+
+                string right = stack.Pop();
+                string left = stack.Pop();
+                if (token.Text == "^") stack.Push($"pow(({left}), ({right}))");
+                else if (token.Text is "<" or ">" or "<=" or ">=" or "==" or "!=")
+                    stack.Push($"((({left}) {token.Text} ({right})) ? 1.0 : 0.0)");
+                else stack.Push($"(({left}) {token.Text} ({right}))");
+            }
+
+            if (stack.Count != 1) throw new FormatException("Expression could not be translated to HLSL");
+            return stack.Pop();
+        }
+
+        private static string FunctionToHlsl(string name, IReadOnlyList<string> a)
+        {
+            string Call(string functionName) => functionName + "(" + string.Join(", ", a) + ")";
+            return name switch
+            {
+                "ln" => $"log({a[0]})",
+                "log" => $"log10({a[0]})",
+                "mod" => $"(({a[0]}) - ({a[1]}) * floor(({a[0]}) / ({a[1]})))",
+                "repeat" => $"(({a[0]}) - floor(({a[0]}) / ({a[1]})) * ({a[1]}))",
+                "pingpong" => $"gc_pingpong({a[0]}, {a[1]})",
+                "inverselerp" => $"gc_inverseLerp({a[0]}, {a[1]}, {a[2]})",
+                "smootherstep" => $"gc_smootherstep({a[0]}, {a[1]}, {a[2]})",
+                "remap" => $"gc_remap({a[0]}, {a[1]}, {a[2]}, {a[3]}, {a[4]})",
+                "noise" => $"gc_noise(float2({a[0]}, {a[1]}), 0.0)",
+                "noiseseed" => $"gc_noise(float2({a[0]}, {a[1]}), {a[2]})",
+                "fbm" => $"gc_fbm(float2({a[0]}, {a[1]}), {a[2]}, {a[3]}, {a[4]})",
+                "if" or "select" => $"(({a[0]}) != 0.0 ? ({a[1]}) : ({a[2]}))",
+                "and" => $"((({a[0]}) != 0.0 && ({a[1]}) != 0.0) ? 1.0 : 0.0)",
+                "or" => $"((({a[0]}) != 0.0 || ({a[1]}) != 0.0) ? 1.0 : 0.0)",
+                "not" => $"(({a[0]}) == 0.0 ? 1.0 : 0.0)",
+                "bernoulli" => $"(({a[1]}) < saturate({a[0]}) ? 1.0 : 0.0)",
+                "uniform" => $"lerp({a[0]}, {a[1]}, saturate({a[2]}))",
+                "normal" => $"(({a[0]}) + ({a[1]}) * ({a[2]}))",
+                _ => Call(name)
+            };
+        }
+
         private static double ApplyOperator(string op, double left, double right)
         {
             return op switch
@@ -476,14 +591,17 @@ namespace GraphCalculator
                 "*" => left * right,
                 "/" => right == 0 ? double.NaN : left / right,
                 "^" => Math.Pow(left, right),
+                "<" => left < right ? 1.0 : 0.0,
+                ">" => left > right ? 1.0 : 0.0,
+                "<=" => left <= right ? 1.0 : 0.0,
+                ">=" => left >= right ? 1.0 : 0.0,
+                "==" => Math.Abs(left - right) <= 1e-12 ? 1.0 : 0.0,
+                "!=" => Math.Abs(left - right) > 1e-12 ? 1.0 : 0.0,
                 _ => throw new InvalidOperationException($"Unknown operator '{op}'")
             };
         }
 
-        private sealed record FunctionDefinition(
-            int Arity,
-            Func<double, double>? Unary,
-            Func<double, double, double>? Binary);
+        private sealed record FunctionDefinition(int Arity, Func<double[], int, double> Evaluate);
 
         private static class Functions
         {
@@ -502,15 +620,49 @@ namespace GraphCalculator
                 ["abs"] = Unary(Math.Abs),
                 ["floor"] = Unary(Math.Floor),
                 ["ceil"] = Unary(Math.Ceiling),
+                ["round"] = Unary(Math.Round),
+                ["sign"] = Unary(value => Math.Sign(value)),
+                ["frac"] = Unary(value => value - Math.Floor(value)),
+                ["saturate"] = Unary(value => Math.Clamp(value, 0.0, 1.0)),
+                ["not"] = Unary(value => IsTruthy(value) ? 0.0 : 1.0),
+
                 ["pow"] = Binary(Math.Pow),
                 ["max"] = Binary(Math.Max),
-                ["min"] = Binary(Math.Min)
+                ["min"] = Binary(Math.Min),
+                ["mod"] = Binary((a, b) => b == 0 ? double.NaN : a - b * Math.Floor(a / b)),
+                ["step"] = Binary((edge, value) => value < edge ? 0.0 : 1.0),
+                ["atan2"] = Binary(Math.Atan2),
+                ["noise"] = Binary((x, y) => ValueNoise(x, y, 0)),
+                ["repeat"] = Binary((value, length) => length == 0 ? double.NaN : value - Math.Floor(value / length) * length),
+                ["pingpong"] = Binary((value, length) => PingPong(value, length)),
+                ["and"] = Binary((a, b) => IsTruthy(a) && IsTruthy(b) ? 1.0 : 0.0),
+                ["or"] = Binary((a, b) => IsTruthy(a) || IsTruthy(b) ? 1.0 : 0.0),
+                ["bernoulli"] = Binary((p, r) => r < Math.Clamp(p, 0.0, 1.0) ? 1.0 : 0.0),
+
+                ["clamp"] = Ternary((value, min, max) => min > max ? double.NaN : Math.Clamp(value, min, max)),
+                ["lerp"] = Ternary((a, b, t) => a + (b - a) * t),
+                ["inverselerp"] = Ternary((a, b, value) => Math.Abs(b - a) < 1e-15 ? 0.0 : (value - a) / (b - a)),
+                ["smoothstep"] = Ternary((edge0, edge1, value) => SmoothStep(edge0, edge1, value)),
+                ["smootherstep"] = Ternary((edge0, edge1, value) => SmootherStep(edge0, edge1, value)),
+                ["noiseseed"] = Ternary((x, y, seed) => ValueNoise(x, y, seed)),
+                ["if"] = Ternary((condition, whenTrue, whenFalse) => IsTruthy(condition) ? whenTrue : whenFalse),
+                ["select"] = Ternary((condition, whenTrue, whenFalse) => IsTruthy(condition) ? whenTrue : whenFalse),
+                ["uniform"] = Ternary((min, max, r) => min + (max - min) * Math.Clamp(r, 0.0, 1.0)),
+                ["normal"] = Ternary((mean, stddev, gaussian) => mean + stddev * gaussian),
+
+                ["remap"] = Nary(5, (values, offset) =>
+                {
+                    double inMin = values[offset];
+                    double inMax = values[offset + 1];
+                    if (Math.Abs(inMax - inMin) < 1e-15) return double.NaN;
+                    double t = (values[offset + 4] - inMin) / (inMax - inMin);
+                    return values[offset + 2] + (values[offset + 3] - values[offset + 2]) * t;
+                }),
+                ["fbm"] = Nary(5, (values, offset) => Fbm(
+                    values[offset], values[offset + 1], values[offset + 2], values[offset + 3], values[offset + 4]))
             };
 
-            public static bool IsFunction(string name)
-            {
-                return Table.ContainsKey(name);
-            }
+            public static bool IsFunction(string name) => Table.ContainsKey(name);
 
             public static bool TryGet(string name, out FunctionDefinition definition)
             {
@@ -525,13 +677,95 @@ namespace GraphCalculator
             }
 
             private static FunctionDefinition Unary(Func<double, double> function)
-            {
-                return new FunctionDefinition(1, function, null);
-            }
+                => new(1, (values, offset) => function(values[offset]));
 
             private static FunctionDefinition Binary(Func<double, double, double> function)
+                => new(2, (values, offset) => function(values[offset], values[offset + 1]));
+
+            private static FunctionDefinition Ternary(Func<double, double, double, double> function)
+                => new(3, (values, offset) => function(values[offset], values[offset + 1], values[offset + 2]));
+
+            private static FunctionDefinition Nary(int arity, Func<double[], int, double> function)
+                => new(arity, function);
+
+            private static bool IsTruthy(double value)
             {
-                return new FunctionDefinition(2, null, function);
+                return double.IsFinite(value) && Math.Abs(value) > 1e-12;
+            }
+
+            private static double SmoothStep(double edge0, double edge1, double value)
+            {
+                if (Math.Abs(edge1 - edge0) < 1e-15) return value < edge0 ? 0.0 : 1.0;
+                double t = Math.Clamp((value - edge0) / (edge1 - edge0), 0.0, 1.0);
+                return t * t * (3.0 - 2.0 * t);
+            }
+
+
+            private static double SmootherStep(double edge0, double edge1, double value)
+            {
+                if (Math.Abs(edge1 - edge0) < 1e-15) return value < edge0 ? 0.0 : 1.0;
+                double t = Math.Clamp((value - edge0) / (edge1 - edge0), 0.0, 1.0);
+                return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+            }
+
+            private static double PingPong(double value, double length)
+            {
+                if (length <= 0) return double.NaN;
+                double repeated = value - Math.Floor(value / (2.0 * length)) * (2.0 * length);
+                return length - Math.Abs(repeated - length);
+            }
+            private static double ValueNoise(double x, double y, double seed)
+            {
+                int x0 = (int)Math.Floor(x);
+                int y0 = (int)Math.Floor(y);
+                int x1 = x0 + 1;
+                int y1 = y0 + 1;
+
+                double tx = Fade(x - x0);
+                double ty = Fade(y - y0);
+
+                double a = Hash01(x0, y0, seed);
+                double b = Hash01(x1, y0, seed);
+                double c = Hash01(x0, y1, seed);
+                double d = Hash01(x1, y1, seed);
+
+                double ab = a + (b - a) * tx;
+                double cd = c + (d - c) * tx;
+                return (ab + (cd - ab) * ty) * 2.0 - 1.0;
+            }
+
+            private static double Fbm(double x, double y, double octavesValue, double persistence, double lacunarity)
+            {
+                int octaves = Math.Clamp((int)Math.Round(octavesValue), 1, 10);
+                persistence = Math.Clamp(persistence, 0.0, 1.0);
+                lacunarity = Math.Clamp(lacunarity, 1.01, 8.0);
+
+                double amplitude = 1.0;
+                double frequency = 1.0;
+                double total = 0.0;
+                double weight = 0.0;
+
+                for (int octave = 0; octave < octaves; octave++)
+                {
+                    total += ValueNoise(x * frequency, y * frequency, octave * 101.0) * amplitude;
+                    weight += amplitude;
+                    amplitude *= persistence;
+                    frequency *= lacunarity;
+                }
+
+                return weight > 0 ? total / weight : 0.0;
+            }
+
+            private static double Fade(double t)
+            {
+                // Quintic fade avoids the visible slope break linear interpolation leaves at cell edges.
+                return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+            }
+
+            private static double Hash01(int x, int y, double seed)
+            {
+                double n = Math.Sin(x * 127.1 + y * 311.7 + seed * 74.7) * 43758.5453123;
+                return n - Math.Floor(n);
             }
         }
     }
