@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,6 +10,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Media3D;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 
@@ -32,11 +34,21 @@ namespace GraphCalculator
         private CancellationTokenSource? _renderCancellation;
         private CancellationTokenSource? _fitCancellation;
         private PlotViewport _viewport = new(-10, 10, -10, 10);
+        private SurfaceViewport _surfaceViewport = new(-10, 10, -10, 10, -10, 10);
         private TextBox? _activeExpressionBox;
         private int _nextColorIndex;
         private bool _isDragging;
         private Point _dragStart;
         private PlotViewport _dragStartViewport;
+
+        private bool _is3DMode;
+        private bool _surfaceIsDragging;
+        private Point _surfaceDragStart;
+        private double _surfaceDragStartYaw;
+        private double _surfaceDragStartPitch;
+        private double _surfaceYaw = 38;
+        private double _surfacePitch = 28;
+        private double _surfaceCameraDistance = 18;
 
         public MainWindow()
         {
@@ -59,6 +71,9 @@ namespace GraphCalculator
                 AddExpression();
             }
 
+            UpdateSurfaceRangeInputs();
+            UpdateSurfaceCamera();
+            UpdatePlotModeUi(refreshExpressions: false);
             UpdateViewRangeText();
             ScheduleRender(10);
 
@@ -129,7 +144,7 @@ namespace GraphCalculator
             }
         }
 
-        private static void RefreshExpression(GraphExpression item)
+        private void RefreshExpression(GraphExpression item)
         {
             if (string.IsNullOrWhiteSpace(item.Expression))
             {
@@ -140,10 +155,32 @@ namespace GraphCalculator
 
             try
             {
-                item.Compiled = CalculatorEngine.Compile(item.Expression);
-                item.StatusText = item.Compiled.DependsOnX
-                    ? string.Empty
-                    : "= " + NumberFormatting.Format(item.Compiled.Evaluate());
+                CalculatorEngine.CompiledExpression compiled = CalculatorEngine.Compile(item.Expression);
+                string? unsupported = compiled.Variables
+                    .FirstOrDefault(name => !name.Equals("x", StringComparison.OrdinalIgnoreCase)
+                        && !name.Equals("y", StringComparison.OrdinalIgnoreCase));
+
+                if (unsupported != null)
+                {
+                    item.Compiled = null;
+                    item.StatusText = $"Error: Unknown identifier '{unsupported}'";
+                    return;
+                }
+
+                item.Compiled = compiled;
+
+                if (!_is3DMode && compiled.DependsOnY)
+                {
+                    item.StatusText = "Uses y — switch to 3D";
+                }
+                else if (!compiled.DependsOnX && !compiled.DependsOnY)
+                {
+                    item.StatusText = "= " + NumberFormatting.Format(compiled.Evaluate());
+                }
+                else
+                {
+                    item.StatusText = string.Empty;
+                }
             }
             catch (Exception ex)
             {
@@ -292,6 +329,12 @@ namespace GraphCalculator
 
         private async Task RenderGraphAsync()
         {
+            if (_is3DMode)
+            {
+                await RenderSurfaceGraphAsync();
+                return;
+            }
+
             double width = GraphSurface.ActualWidth;
             double height = GraphSurface.ActualHeight;
             if (width < 20 || height < 20) return;
@@ -302,7 +345,10 @@ namespace GraphCalculator
             CancellationToken token = cancellation.Token;
 
             var active = Expressions
-                .Where(item => item.IsVisible && item.Compiled != null && !string.IsNullOrWhiteSpace(item.Expression))
+                .Where(item => item.IsVisible
+                    && item.Compiled != null
+                    && !item.Compiled.DependsOnY
+                    && !string.IsNullOrWhiteSpace(item.Expression))
                 .Select(item => new SeriesRequest(item, item.Compiled!))
                 .ToList();
 
@@ -495,7 +541,9 @@ namespace GraphCalculator
         private async void FitGraphButton_Click(object sender, RoutedEventArgs e)
         {
             var compiled = Expressions
-                .Where(item => item.IsVisible && item.Compiled != null)
+                .Where(item => item.IsVisible
+                    && item.Compiled != null
+                    && (_is3DMode || !item.Compiled.DependsOnY))
                 .Select(item => item.Compiled!)
                 .ToList();
 
@@ -512,17 +560,36 @@ namespace GraphCalculator
 
             try
             {
-                var bounds = await Task.Run(
-                    () => GraphSampler.FindYBounds(compiled, _viewport.MinX, _viewport.MaxX, cancellation.Token),
-                    cancellation.Token);
-
-                if (!bounds.HasValue)
+                if (_is3DMode)
                 {
-                    GraphStatusText.Text = "No finite values in view";
-                    return;
+                    var bounds = await Task.Run(
+                        () => SurfaceSampler.FindZBounds(compiled, _surfaceViewport, cancellation.Token),
+                        cancellation.Token);
+
+                    if (!bounds.HasValue)
+                    {
+                        GraphStatusText.Text = "No finite values in range";
+                        return;
+                    }
+
+                    _surfaceViewport = _surfaceViewport.WithZ(bounds.Value.minZ, bounds.Value.maxZ);
+                    UpdateSurfaceRangeInputs();
+                }
+                else
+                {
+                    var bounds = await Task.Run(
+                        () => GraphSampler.FindYBounds(compiled, _viewport.MinX, _viewport.MaxX, cancellation.Token),
+                        cancellation.Token);
+
+                    if (!bounds.HasValue)
+                    {
+                        GraphStatusText.Text = "No finite values in view";
+                        return;
+                    }
+
+                    _viewport = _viewport.WithY(bounds.Value.minY, bounds.Value.maxY);
                 }
 
-                _viewport = _viewport.WithY(bounds.Value.minY, bounds.Value.maxY);
                 UpdateViewRangeText();
                 ScheduleRender(0);
             }
@@ -542,7 +609,20 @@ namespace GraphCalculator
 
         private void ResetViewButton_Click(object sender, RoutedEventArgs e)
         {
-            _viewport = new PlotViewport(-10, 10, -10, 10);
+            if (_is3DMode)
+            {
+                _surfaceViewport = new SurfaceViewport(-10, 10, -10, 10, -10, 10);
+                _surfaceYaw = 38;
+                _surfacePitch = 28;
+                _surfaceCameraDistance = 18;
+                UpdateSurfaceRangeInputs();
+                UpdateSurfaceCamera();
+            }
+            else
+            {
+                _viewport = new PlotViewport(-10, 10, -10, 10);
+            }
+
             UpdateViewRangeText();
             ScheduleRender(0);
         }
@@ -656,7 +736,8 @@ namespace GraphCalculator
             HoverXText.Text = $"x = {NumberFormatting.Format(x)}   y = {NumberFormatting.Format(y)}";
             HoverValuesList.Items.Clear();
 
-            foreach (GraphExpression item in Expressions.Where(item => item.IsVisible && item.Compiled != null))
+            foreach (GraphExpression item in Expressions.Where(item =>
+                         item.IsVisible && item.Compiled != null && !item.Compiled.DependsOnY))
             {
                 double value;
                 try
@@ -707,9 +788,247 @@ namespace GraphCalculator
 
         private void UpdateViewRangeText()
         {
+            if (_is3DMode)
+            {
+                ViewRangeText.Text =
+                    $"x: {NumberFormatting.FormatAxis(_surfaceViewport.MinX)} to {NumberFormatting.FormatAxis(_surfaceViewport.MaxX)}   " +
+                    $"y: {NumberFormatting.FormatAxis(_surfaceViewport.MinY)} to {NumberFormatting.FormatAxis(_surfaceViewport.MaxY)}   " +
+                    $"z: {NumberFormatting.FormatAxis(_surfaceViewport.MinZ)} to {NumberFormatting.FormatAxis(_surfaceViewport.MaxZ)}";
+                return;
+            }
+
             ViewRangeText.Text =
                 $"x: {NumberFormatting.FormatAxis(_viewport.MinX)} to {NumberFormatting.FormatAxis(_viewport.MaxX)}   " +
                 $"y: {NumberFormatting.FormatAxis(_viewport.MinY)} to {NumberFormatting.FormatAxis(_viewport.MaxY)}";
+        }
+
+        private void PlotModeComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (!IsLoaded) return;
+
+            _is3DMode = PlotModeComboBox.SelectedItem is ComboBoxItem { Tag: string tag }
+                && tag.Equals("3D", StringComparison.OrdinalIgnoreCase);
+
+            UpdatePlotModeUi(refreshExpressions: true);
+            UpdateViewRangeText();
+            ScheduleRender(0);
+        }
+
+        private void UpdatePlotModeUi(bool refreshExpressions)
+        {
+            PlotCanvas.Visibility = _is3DMode ? Visibility.Collapsed : Visibility.Visible;
+            OverlayCanvas.Visibility = _is3DMode ? Visibility.Collapsed : Visibility.Visible;
+            SurfaceViewport3D.Visibility = _is3DMode ? Visibility.Visible : Visibility.Collapsed;
+            SurfaceRangePanel.Visibility = _is3DMode ? Visibility.Visible : Visibility.Collapsed;
+            SurfaceLegend.Visibility = _is3DMode ? Visibility.Visible : Visibility.Collapsed;
+
+            InteractionHintText.Text = _is3DMode
+                ? "Scroll to zoom · drag to orbit"
+                : "Scroll to zoom · drag to pan";
+
+            ExamplesText.Text = _is3DMode
+                ? "3D examples: z = sin(sqrt(x^2+y^2)), x^2-y^2, sin(x)cos(y)"
+                : "Examples: 2x, sin(x), (x+1)(x-1), y = sqrt(x), 1e-6";
+
+            FooterHintText.Text = _is3DMode
+                ? "3D plots use z = f(x, y) · change the visible domain with the range controls"
+                : "Enter refreshes immediately · Esc clears the active expression";
+
+            HideHover();
+
+            if (refreshExpressions)
+            {
+                foreach (GraphExpression item in Expressions)
+                {
+                    RefreshExpression(item);
+                }
+            }
+        }
+
+        private async Task RenderSurfaceGraphAsync()
+        {
+            double width = GraphSurface.ActualWidth;
+            double height = GraphSurface.ActualHeight;
+            if (width < 20 || height < 20) return;
+
+            _renderCancellation?.Cancel();
+            var cancellation = new CancellationTokenSource();
+            _renderCancellation = cancellation;
+            CancellationToken token = cancellation.Token;
+
+            var active = Expressions
+                .Where(item => item.IsVisible && item.Compiled != null && !string.IsNullOrWhiteSpace(item.Expression))
+                .Select(item => new SeriesRequest(item, item.Compiled!))
+                .ToList();
+
+            SurfaceViewport viewport = _surfaceViewport;
+            int resolution = Math.Clamp((int)(Math.Min(width, height) / 9.0), 34, 72);
+
+            try
+            {
+                List<SurfaceSample> samples = await Task.Run(() =>
+                {
+                    var result = new List<SurfaceSample>(active.Count);
+                    foreach (SeriesRequest request in active)
+                    {
+                        token.ThrowIfCancellationRequested();
+                        result.Add(SurfaceSampler.Sample(request.Compiled, viewport, resolution, token));
+                    }
+
+                    return result;
+                }, token);
+
+                token.ThrowIfCancellationRequested();
+
+                var layers = new List<SurfaceRenderLayer>(active.Count);
+                for (int i = 0; i < active.Count; i++)
+                {
+                    layers.Add(new SurfaceRenderLayer(samples[i], active[i].Expression.Color));
+                }
+
+                SurfaceSceneVisual.Content = SurfaceSceneBuilder.Build(layers, viewport);
+                GraphStatusText.Text = active.Count switch
+                {
+                    0 => "No visible surfaces",
+                    1 => "1 surface",
+                    _ => $"{active.Count} surfaces"
+                };
+
+                UpdateViewRangeText();
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            finally
+            {
+                if (ReferenceEquals(_renderCancellation, cancellation))
+                {
+                    _renderCancellation = null;
+                }
+
+                cancellation.Dispose();
+            }
+        }
+
+        private void ApplySurfaceRangeButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (!TryReadSurfaceRange(out SurfaceViewport viewport))
+            {
+                GraphStatusText.Text = "Invalid 3D range";
+                return;
+            }
+
+            _surfaceViewport = viewport;
+            UpdateSurfaceRangeInputs();
+            UpdateViewRangeText();
+            ScheduleRender(0);
+        }
+
+        private bool TryReadSurfaceRange(out SurfaceViewport viewport)
+        {
+            viewport = default;
+
+            if (!TryReadDouble(SurfaceMinXTextBox.Text, out double minX)
+                || !TryReadDouble(SurfaceMaxXTextBox.Text, out double maxX)
+                || !TryReadDouble(SurfaceMinYTextBox.Text, out double minY)
+                || !TryReadDouble(SurfaceMaxYTextBox.Text, out double maxY)
+                || !TryReadDouble(SurfaceMinZTextBox.Text, out double minZ)
+                || !TryReadDouble(SurfaceMaxZTextBox.Text, out double maxZ))
+            {
+                return false;
+            }
+
+            viewport = new SurfaceViewport(minX, maxX, minY, maxY, minZ, maxZ);
+            return viewport.IsValid;
+        }
+
+        private static bool TryReadDouble(string text, out double value)
+        {
+            return (double.TryParse(text, NumberStyles.Float, CultureInfo.CurrentCulture, out value)
+                    || double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value))
+                   && double.IsFinite(value);
+        }
+
+        private void UpdateSurfaceRangeInputs()
+        {
+            if (SurfaceMinXTextBox == null) return;
+
+            SurfaceMinXTextBox.Text = NumberFormatting.FormatAxis(_surfaceViewport.MinX);
+            SurfaceMaxXTextBox.Text = NumberFormatting.FormatAxis(_surfaceViewport.MaxX);
+            SurfaceMinYTextBox.Text = NumberFormatting.FormatAxis(_surfaceViewport.MinY);
+            SurfaceMaxYTextBox.Text = NumberFormatting.FormatAxis(_surfaceViewport.MaxY);
+            SurfaceMinZTextBox.Text = NumberFormatting.FormatAxis(_surfaceViewport.MinZ);
+            SurfaceMaxZTextBox.Text = NumberFormatting.FormatAxis(_surfaceViewport.MaxZ);
+        }
+
+        private void SurfaceViewport3D_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            _surfaceIsDragging = true;
+            _surfaceDragStart = e.GetPosition(SurfaceViewport3D);
+            _surfaceDragStartYaw = _surfaceYaw;
+            _surfaceDragStartPitch = _surfacePitch;
+            SurfaceViewport3D.CaptureMouse();
+            SurfaceViewport3D.Cursor = Cursors.SizeAll;
+            e.Handled = true;
+        }
+
+        private void SurfaceViewport3D_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            if (!_surfaceIsDragging) return;
+
+            _surfaceIsDragging = false;
+            SurfaceViewport3D.ReleaseMouseCapture();
+            SurfaceViewport3D.Cursor = Cursors.Arrow;
+            e.Handled = true;
+        }
+
+        private void SurfaceViewport3D_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (!_surfaceIsDragging || e.LeftButton != MouseButtonState.Pressed)
+            {
+                if (_surfaceIsDragging && e.LeftButton != MouseButtonState.Pressed)
+                {
+                    _surfaceIsDragging = false;
+                    SurfaceViewport3D.ReleaseMouseCapture();
+                    SurfaceViewport3D.Cursor = Cursors.Arrow;
+                }
+
+                return;
+            }
+
+            Point point = e.GetPosition(SurfaceViewport3D);
+            double dx = point.X - _surfaceDragStart.X;
+            double dy = point.Y - _surfaceDragStart.Y;
+
+            _surfaceYaw = _surfaceDragStartYaw + dx * 0.35;
+            _surfacePitch = Math.Clamp(_surfaceDragStartPitch - dy * 0.3, -82, 82);
+            UpdateSurfaceCamera();
+        }
+
+        private void SurfaceViewport3D_MouseWheel(object sender, MouseWheelEventArgs e)
+        {
+            _surfaceCameraDistance *= e.Delta > 0 ? 0.88 : 1.14;
+            _surfaceCameraDistance = Math.Clamp(_surfaceCameraDistance, 9, 55);
+            UpdateSurfaceCamera();
+            e.Handled = true;
+        }
+
+        private void UpdateSurfaceCamera()
+        {
+            if (SurfaceCamera == null) return;
+
+            double yaw = _surfaceYaw * Math.PI / 180.0;
+            double pitch = _surfacePitch * Math.PI / 180.0;
+            double horizontal = Math.Cos(pitch) * _surfaceCameraDistance;
+
+            var position = new Point3D(
+                Math.Sin(yaw) * horizontal,
+                Math.Sin(pitch) * _surfaceCameraDistance,
+                Math.Cos(yaw) * horizontal);
+
+            SurfaceCamera.Position = position;
+            SurfaceCamera.LookDirection = new Vector3D(-position.X, -position.Y, -position.Z);
+            SurfaceCamera.UpDirection = new Vector3D(0, 1, 0);
         }
 
         private static double TransformX(double x, PlotViewport viewport, double width)

@@ -50,7 +50,8 @@
         <Border Grid.Row="0" Background="White" BorderBrush="#FFE1E3E7" BorderThickness="0,0,0,1" Padding="18,12">
             <DockPanel LastChildFill="True">
                 <TextBlock Text="Graph Calculator" FontSize="22" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                <TextBlock DockPanel.Dock="Right"
+                <TextBlock x:Name="InteractionHintText"
+                           DockPanel.Dock="Right"
                            Text="Scroll to zoom · drag to pan"
                            Foreground="#FF6B7280"
                            VerticalAlignment="Center"/>
@@ -188,10 +189,18 @@
                             <Button Style="{StaticResource KeyButton}" Content="pow" Tag="pow(" Click="KeypadButton_Click"/>
                             <Button Style="{StaticResource KeyButton}" Content="abs" Tag="abs(" Click="KeypadButton_Click"/>
                             <Button Style="{StaticResource KeyButton}" Content="⌫" Click="BackspaceButton_Click"/>
+
+                            <Button Style="{StaticResource KeyButton}" Content="x" Tag="x" Click="KeypadButton_Click"/>
+                            <Button Style="{StaticResource KeyButton}" Content="y" Tag="y" Click="KeypadButton_Click"/>
+                            <Button Style="{StaticResource KeyButton}" Content="e" Tag="e" Click="KeypadButton_Click"/>
+                            <Button Style="{StaticResource KeyButton}" Content="max" Tag="max(" Click="KeypadButton_Click"/>
+                            <Button Style="{StaticResource KeyButton}" Content="min" Tag="min(" Click="KeypadButton_Click"/>
+                            <Button Style="{StaticResource KeyButton}" Content="floor" Tag="floor(" Click="KeypadButton_Click"/>
                         </UniformGrid>
                     </Expander>
 
-                    <TextBlock Grid.Row="3"
+                    <TextBlock x:Name="ExamplesText"
+                               Grid.Row="3"
                                Margin="2,10,2,0"
                                Text="Examples: 2x, sin(x), (x+1)(x-1), y = sqrt(x), 1e-6"
                                Foreground="#FF8A9099"
@@ -213,12 +222,26 @@
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
                     <DockPanel Margin="2,0,2,8">
                         <TextBlock Text="Graph" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                            <TextBlock Text="Mode"
+                                       Foreground="#FF6B7280"
+                                       Margin="0,0,6,0"
+                                       VerticalAlignment="Center"/>
+                            <ComboBox x:Name="PlotModeComboBox"
+                                      Width="76"
+                                      Height="30"
+                                      SelectedIndex="0"
+                                      Margin="0,0,8,0"
+                                      SelectionChanged="PlotModeComboBox_SelectionChanged">
+                                <ComboBoxItem Content="2D" Tag="2D"/>
+                                <ComboBoxItem Content="3D" Tag="3D"/>
+                            </ComboBox>
                             <TextBlock x:Name="GraphStatusText"
                                        Foreground="#FF6B7280"
                                        Margin="0,0,10,0"
@@ -228,8 +251,36 @@
                         </StackPanel>
                     </DockPanel>
 
+                    <Border x:Name="SurfaceRangePanel"
+                            Grid.Row="1"
+                            Visibility="Collapsed"
+                            Background="#FFF8F9FB"
+                            BorderBrush="#FFE3E6EA"
+                            BorderThickness="1"
+                            CornerRadius="5"
+                            Padding="8,6"
+                            Margin="2,0,2,8">
+                        <WrapPanel VerticalAlignment="Center">
+                            <TextBlock Text="X" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                            <TextBox x:Name="SurfaceMinXTextBox" Width="62" Padding="4,2"/>
+                            <TextBlock Text="to" Foreground="#FF6B7280" VerticalAlignment="Center" Margin="5,0"/>
+                            <TextBox x:Name="SurfaceMaxXTextBox" Width="62" Padding="4,2" Margin="0,0,12,0"/>
+
+                            <TextBlock Text="Y" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                            <TextBox x:Name="SurfaceMinYTextBox" Width="62" Padding="4,2"/>
+                            <TextBlock Text="to" Foreground="#FF6B7280" VerticalAlignment="Center" Margin="5,0"/>
+                            <TextBox x:Name="SurfaceMaxYTextBox" Width="62" Padding="4,2" Margin="0,0,12,0"/>
+
+                            <TextBlock Text="Z" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                            <TextBox x:Name="SurfaceMinZTextBox" Width="62" Padding="4,2"/>
+                            <TextBlock Text="to" Foreground="#FF6B7280" VerticalAlignment="Center" Margin="5,0"/>
+                            <TextBox x:Name="SurfaceMaxZTextBox" Width="62" Padding="4,2"/>
+                            <Button Style="{StaticResource ToolbarButton}" Content="Apply range" Margin="8,0,0,0" Click="ApplySurfaceRangeButton_Click"/>
+                        </WrapPanel>
+                    </Border>
+
                     <Grid x:Name="GraphSurface"
-                          Grid.Row="1"
+                          Grid.Row="2"
                           Background="#FFFBFCFE"
                           ClipToBounds="True"
                           SizeChanged="GraphSurface_SizeChanged">
@@ -240,6 +291,22 @@
                                 MouseLeftButtonDown="PlotCanvas_MouseLeftButtonDown"
                                 MouseLeftButtonUp="PlotCanvas_MouseLeftButtonUp"
                                 MouseWheel="PlotCanvas_MouseWheel"/>
+
+                        <Viewport3D x:Name="SurfaceViewport3D"
+                                    Visibility="Collapsed"
+                                    ClipToBounds="True"
+                                    MouseLeftButtonDown="SurfaceViewport3D_MouseLeftButtonDown"
+                                    MouseLeftButtonUp="SurfaceViewport3D_MouseLeftButtonUp"
+                                    MouseMove="SurfaceViewport3D_MouseMove"
+                                    MouseWheel="SurfaceViewport3D_MouseWheel">
+                            <Viewport3D.Camera>
+                                <PerspectiveCamera x:Name="SurfaceCamera"
+                                                   FieldOfView="42"
+                                                   NearPlaneDistance="0.1"
+                                                   FarPlaneDistance="200"/>
+                            </Viewport3D.Camera>
+                            <ModelVisual3D x:Name="SurfaceSceneVisual"/>
+                        </Viewport3D>
 
                         <Canvas x:Name="OverlayCanvas" IsHitTestVisible="False">
                             <Line x:Name="CrosshairVertical"
@@ -266,6 +333,30 @@
                                 </StackPanel>
                             </Border>
                         </Canvas>
+
+                        <Border x:Name="SurfaceLegend"
+                                Visibility="Collapsed"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Top"
+                                Margin="10"
+                                Background="#EFFFFFFF"
+                                BorderBrush="#FFD0D4DA"
+                                BorderThickness="1"
+                                CornerRadius="5"
+                                Padding="8"
+                                IsHitTestVisible="False">
+                            <StackPanel>
+                                <TextBlock Text="3D surface: z = f(x, y)" FontWeight="SemiBold" Margin="0,0,0,3"/>
+                                <TextBlock FontSize="11">
+                                    <Run Text="x" Foreground="#FFBE4A4A" FontWeight="SemiBold"/>
+                                    <Run Text=" axis  ·  "/>
+                                    <Run Text="y" Foreground="#FF439162" FontWeight="SemiBold"/>
+                                    <Run Text=" axis  ·  "/>
+                                    <Run Text="z" Foreground="#FF496FB2" FontWeight="SemiBold"/>
+                                    <Run Text=" axis"/>
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
                     </Grid>
                 </Grid>
             </Border>
@@ -274,7 +365,10 @@
         <Border Grid.Row="2" Background="White" BorderBrush="#FFE1E3E7" BorderThickness="0,1,0,0" Padding="14,8">
             <DockPanel>
                 <TextBlock x:Name="ViewRangeText" Foreground="#FF6B7280"/>
-                <TextBlock DockPanel.Dock="Right" Foreground="#FF8A9099" Text="Enter refreshes immediately · Esc clears the active expression"/>
+                <TextBlock x:Name="FooterHintText"
+                           DockPanel.Dock="Right"
+                           Foreground="#FF8A9099"
+                           Text="Enter refreshes immediately · Esc clears the active expression"/>
             </DockPanel>
         </Border>
     </Grid>

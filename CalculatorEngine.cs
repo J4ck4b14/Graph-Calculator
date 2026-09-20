@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 
 namespace GraphCalculator
 {
@@ -22,29 +23,41 @@ namespace GraphCalculator
         {
             private readonly IReadOnlyList<Token> _rpn;
 
-            internal CompiledExpression(string source, IReadOnlyList<Token> rpn, bool dependsOnX)
+            internal CompiledExpression(
+                string source,
+                IReadOnlyList<Token> rpn,
+                IReadOnlyCollection<string> variables)
             {
                 Source = source;
                 _rpn = rpn;
-                DependsOnX = dependsOnX;
+                Variables = variables;
+                DependsOnX = variables.Contains("x", StringComparer.OrdinalIgnoreCase);
+                DependsOnY = variables.Contains("y", StringComparer.OrdinalIgnoreCase);
             }
 
             public string Source { get; }
             public bool DependsOnX { get; }
+            public bool DependsOnY { get; }
+            public IReadOnlyCollection<string> Variables { get; }
 
             public double Evaluate()
             {
-                return EvaluateRpn(_rpn, null, null);
+                return EvaluateRpn(_rpn, null, null, null);
             }
 
             public double Evaluate(double x)
             {
-                return EvaluateRpn(_rpn, x, null);
+                return EvaluateRpn(_rpn, x, null, null);
+            }
+
+            public double Evaluate(double x, double y)
+            {
+                return EvaluateRpn(_rpn, x, y, null);
             }
 
             public double Evaluate(IDictionary<string, double> variables)
             {
-                return EvaluateRpn(_rpn, null, variables);
+                return EvaluateRpn(_rpn, null, null, variables);
             }
         }
 
@@ -56,18 +69,17 @@ namespace GraphCalculator
             string normalized = NormalizeExpression(expression);
             var tokens = InsertImplicitMultiplication(Tokenize(normalized));
             var rpn = ToRpn(tokens);
-            bool dependsOnX = false;
+            var variables = rpn
+                .Where(token =>
+                    token.Type == TokenType.Identifier
+                    && !Functions.IsFunction(token.Text)
+                    && !token.Text.Equals("pi", StringComparison.OrdinalIgnoreCase)
+                    && !token.Text.Equals("e", StringComparison.OrdinalIgnoreCase))
+                .Select(token => token.Text.ToLowerInvariant())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
 
-            foreach (var token in rpn)
-            {
-                if (token.Type == TokenType.Identifier && token.Text.Equals("x", StringComparison.OrdinalIgnoreCase))
-                {
-                    dependsOnX = true;
-                    break;
-                }
-            }
-
-            return new CompiledExpression(normalized, rpn, dependsOnX);
+            return new CompiledExpression(normalized, rpn, variables);
         }
 
         public static double Evaluate(string expression, IDictionary<string, double>? variables = null)
@@ -88,7 +100,7 @@ namespace GraphCalculator
             if (equalsIndex >= 0)
             {
                 string left = text[..equalsIndex].Replace(" ", string.Empty).ToLowerInvariant();
-                if (left is "y" or "f(x)")
+                if (left is "y" or "z" or "f(x)" or "f(x,y)")
                 {
                     text = text[(equalsIndex + 1)..].Trim();
                 }
@@ -348,6 +360,7 @@ namespace GraphCalculator
         private static double EvaluateRpn(
             IReadOnlyList<Token> rpn,
             double? x,
+            double? y,
             IDictionary<string, double>? variables)
         {
             var stack = new double[Math.Max(4, rpn.Count)];
@@ -395,6 +408,10 @@ namespace GraphCalculator
                         else if (name == "x" && x.HasValue)
                         {
                             stack[count++] = x.Value;
+                        }
+                        else if (name == "y" && y.HasValue)
+                        {
+                            stack[count++] = y.Value;
                         }
                         else if (variables != null && TryGetVariable(variables, name, out double variableValue))
                         {
