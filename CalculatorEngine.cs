@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Numerics;
 
 namespace GraphCalculator
 {
@@ -21,7 +22,8 @@ namespace GraphCalculator
 
         public sealed class CompiledExpression
         {
-            private readonly IReadOnlyList<Token> _rpn;
+            private readonly IReadOnlyList<Token>? _rpn;
+            private readonly AdvancedMathEngine.CompiledProgram? _advanced;
 
             internal CompiledExpression(
                 string source,
@@ -35,45 +37,68 @@ namespace GraphCalculator
                 DependsOnY = variables.Contains("y", StringComparer.OrdinalIgnoreCase);
             }
 
+            internal CompiledExpression(string source, AdvancedMathEngine.CompiledProgram advanced)
+            {
+                Source = source;
+                _advanced = advanced;
+                Variables = advanced.Variables;
+                DependsOnX = Variables.Contains("x", StringComparer.OrdinalIgnoreCase)
+                    || Variables.Contains("z", StringComparer.OrdinalIgnoreCase);
+                DependsOnY = Variables.Contains("y", StringComparer.OrdinalIgnoreCase)
+                    || Variables.Contains("z", StringComparer.OrdinalIgnoreCase);
+            }
+
             public string Source { get; }
             public bool DependsOnX { get; }
             public bool DependsOnY { get; }
             public IReadOnlyCollection<string> Variables { get; }
+            public bool UsesAdvancedMath => _advanced != null;
+            public bool IsPotentiallyComplex => _advanced?.IsPotentiallyComplex == true;
 
-            public double Evaluate()
+            public double Evaluate() => EvaluateReal(null, null, null);
+            public double Evaluate(double x) => EvaluateReal(x, null, null);
+            public double Evaluate(double x, double y) => EvaluateReal(x, y, null);
+            public double Evaluate(double x, IDictionary<string, double> variables) => EvaluateReal(x, null, variables);
+            public double Evaluate(double x, double y, IDictionary<string, double> variables) => EvaluateReal(x, y, variables);
+            public double Evaluate(IDictionary<string, double> variables) => EvaluateReal(null, null, variables);
+
+            public Complex EvaluateComplex() => EvaluateComplexCore(null, null, null);
+            public Complex EvaluateComplex(double x) => EvaluateComplexCore(x, null, null);
+            public Complex EvaluateComplex(double x, double y) => EvaluateComplexCore(x, y, null);
+            public Complex EvaluateComplex(double x, IDictionary<string, double> variables) => EvaluateComplexCore(x, null, variables);
+            public Complex EvaluateComplex(double x, double y, IDictionary<string, double> variables) => EvaluateComplexCore(x, y, variables);
+            public Complex EvaluateComplex(IDictionary<string, double> variables) => EvaluateComplexCore(null, null, variables);
+
+            private double EvaluateReal(double? x, double? y, IDictionary<string, double>? variables)
             {
-                return EvaluateRpn(_rpn, null, null, null);
+                if (_advanced != null) return AdvancedMathEngine.ToRealOrNaN(_advanced.Evaluate(x, y, variables));
+                return EvaluateRpn(_rpn!, x, y, variables);
             }
 
-            public double Evaluate(double x)
+            private Complex EvaluateComplexCore(double? x, double? y, IDictionary<string, double>? variables)
             {
-                return EvaluateRpn(_rpn, x, null, null);
+                if (_advanced != null) return _advanced.Evaluate(x, y, variables);
+                return new Complex(EvaluateRpn(_rpn!, x, y, variables), 0);
             }
 
-            public double Evaluate(double x, double y)
+            public string ToHlsl() => ToHlsl(complexPlane: false);
+
+            public string ToHlsl(bool complexPlane)
             {
-                return EvaluateRpn(_rpn, x, y, null);
+                string code = ToHlsl(complexPlane, out bool returnsComplex);
+                if (returnsComplex)
+                    throw new NotSupportedException("The expression returns a complex value. Export re(...), im(...), abs(...), arg(...), or use the HLSL Lab complex output.");
+                return code;
             }
 
-            public double Evaluate(double x, IDictionary<string, double> variables)
+            public string ToHlsl(bool complexPlane, out bool returnsComplex)
             {
-                return EvaluateRpn(_rpn, x, null, variables);
+                if (_advanced != null) return _advanced.ToHlsl(complexPlane, out returnsComplex);
+                returnsComplex = false;
+                return BuildHlsl(_rpn!);
             }
 
-            public double Evaluate(double x, double y, IDictionary<string, double> variables)
-            {
-                return EvaluateRpn(_rpn, x, y, variables);
-            }
-
-            public double Evaluate(IDictionary<string, double> variables)
-            {
-                return EvaluateRpn(_rpn, null, null, variables);
-            }
-
-            public string ToHlsl()
-            {
-                return BuildHlsl(_rpn);
-            }
+            public string FormatValue(Complex value) => AdvancedMathEngine.FormatComplex(value);
         }
 
         public static CompiledExpression Compile(string expression)
@@ -82,6 +107,11 @@ namespace GraphCalculator
                 throw new ArgumentException("Expression is empty");
 
             string normalized = NormalizeExpression(expression);
+            if (AdvancedMathEngine.ShouldUse(normalized))
+            {
+                return new CompiledExpression(normalized, AdvancedMathEngine.Compile(normalized));
+            }
+
             var tokens = InsertImplicitMultiplication(Tokenize(normalized));
             var rpn = ToRpn(tokens);
             var variables = rpn
@@ -107,6 +137,9 @@ namespace GraphCalculator
         {
             string text = expression.Trim()
                 .Replace("π", "pi")
+                .Replace("·", "*")
+                .Replace("²", "^2")
+                .Replace("³", "^3")
                 .Replace('×', '*')
                 .Replace('÷', '/')
                 .Replace('−', '-');
@@ -118,7 +151,17 @@ namespace GraphCalculator
             if (looksLikeAssignment)
             {
                 string left = text[..equalsIndex].Replace(" ", string.Empty).ToLowerInvariant();
-                if (left is "y" or "z" or "f(x)" or "f(x,y)")
+                int openParen = left.IndexOf('(');
+                string definitionName = openParen > 0 ? left[..openParen] : string.Empty;
+                bool functionNotation = openParen > 0
+                    && left.EndsWith(")", StringComparison.Ordinal)
+                    && !Functions.IsFunction(definitionName)
+                    && definitionName.All(ch => char.IsLetterOrDigit(ch) || ch == '_')
+                    && (left.EndsWith("(x)", StringComparison.Ordinal)
+                        || left.EndsWith("(z)", StringComparison.Ordinal)
+                        || left.EndsWith("(x,y)", StringComparison.Ordinal)
+                        || left.EndsWith("(x,y,z)", StringComparison.Ordinal));
+                if (left is "y" or "z" or "w" or "f(x)" or "f(z)" or "f(x,y)" or "f(x,y,z)" || functionNotation)
                 {
                     text = text[(equalsIndex + 1)..].Trim();
                 }
@@ -571,6 +614,7 @@ namespace GraphCalculator
                 "noise" => $"gc_noise(float2({a[0]}, {a[1]}), 0.0)",
                 "noiseseed" => $"gc_noise(float2({a[0]}, {a[1]}), {a[2]})",
                 "fbm" => $"gc_fbm(float2({a[0]}, {a[1]}), {a[2]}, {a[3]}, {a[4]})",
+                "superformula" => $"gc_superformula({a[0]}, {a[1]}, {a[2]}, {a[3]}, {a[4]}, {a[5]}, {a[6]})",
                 "if" or "select" => $"(({a[0]}) != 0.0 ? ({a[1]}) : ({a[2]}))",
                 "and" => $"((({a[0]}) != 0.0 && ({a[1]}) != 0.0) ? 1.0 : 0.0)",
                 "or" => $"((({a[0]}) != 0.0 || ({a[1]}) != 0.0) ? 1.0 : 0.0)",
@@ -659,7 +703,10 @@ namespace GraphCalculator
                     return values[offset + 2] + (values[offset + 3] - values[offset + 2]) * t;
                 }),
                 ["fbm"] = Nary(5, (values, offset) => Fbm(
-                    values[offset], values[offset + 1], values[offset + 2], values[offset + 3], values[offset + 4]))
+                    values[offset], values[offset + 1], values[offset + 2], values[offset + 3], values[offset + 4])),
+                ["superformula"] = Nary(7, (values, offset) => Superformula(
+                    values[offset], values[offset + 1], values[offset + 2], values[offset + 3],
+                    values[offset + 4], values[offset + 5], values[offset + 6]))
             };
 
             public static bool IsFunction(string name) => Table.ContainsKey(name);
@@ -714,6 +761,16 @@ namespace GraphCalculator
                 double repeated = value - Math.Floor(value / (2.0 * length)) * (2.0 * length);
                 return length - Math.Abs(repeated - length);
             }
+            private static double Superformula(double angle, double m, double n1, double n2, double n3, double a, double b)
+            {
+                if (Math.Abs(n1) < 1e-12 || Math.Abs(a) < 1e-12 || Math.Abs(b) < 1e-12) return double.NaN;
+                double c = Math.Pow(Math.Abs(Math.Cos(m * angle / 4.0) / a), n2);
+                double d = Math.Pow(Math.Abs(Math.Sin(m * angle / 4.0) / b), n3);
+                double sum = c + d;
+                if (!double.IsFinite(sum) || sum <= 0) return double.NaN;
+                return Math.Pow(sum, -1.0 / n1);
+            }
+
             private static double ValueNoise(double x, double y, double seed)
             {
                 int x0 = (int)Math.Floor(x);

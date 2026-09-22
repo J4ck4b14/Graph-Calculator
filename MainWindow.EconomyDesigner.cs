@@ -934,7 +934,7 @@ namespace GraphCalculator
                     Tag = node,
                     Width = nodeWidth,
                     Height = nodeHeight,
-                    Background = Brushes.White,
+                    Background = ThemeBrush("PanelBackgroundBrush", Brushes.White),
                     BorderBrush = (ReferenceEquals(node, _selectedEconomyNode) || _economySelectedNodeIds.Contains(node.Id)) ? kindBrush : new SolidColorBrush(Color.FromRgb(205, 210, 218)),
                     BorderThickness = new Thickness((ReferenceEquals(node, _selectedEconomyNode) || _economySelectedNodeIds.Contains(node.Id)) ? 3 : 1.5),
                     CornerRadius = new CornerRadius(7),

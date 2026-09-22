@@ -16,7 +16,11 @@ namespace GraphCalculator
         VectorField2D,
         Implicit2D,
         Implicit3D,
-        TextureField2D
+        TextureField2D,
+        ComplexField2D,
+        DifferentialEquation1D,
+        DynamicalSystem2D,
+        DynamicalSystem3D
     }
 
     public sealed class GraphExpression : INotifyPropertyChanged
@@ -135,6 +139,10 @@ namespace GraphCalculator
             GraphExpressionKind.Implicit2D => "x",
             GraphExpressionKind.Implicit3D => "x",
             GraphExpressionKind.TextureField2D => "x",
+            GraphExpressionKind.ComplexField2D => "x",
+            GraphExpressionKind.DifferentialEquation1D => "t",
+            GraphExpressionKind.DynamicalSystem2D => "t",
+            GraphExpressionKind.DynamicalSystem3D => "t",
             _ => "t"
         };
 
@@ -146,6 +154,7 @@ namespace GraphCalculator
              || Kind == GraphExpressionKind.Implicit2D
              || Kind == GraphExpressionKind.Implicit3D
              || Kind == GraphExpressionKind.TextureField2D
+             || Kind == GraphExpressionKind.ComplexField2D
              || (ShowYDomain && Kind == GraphExpressionKind.Scalar))
                 ? Visibility.Visible
                 : Visibility.Collapsed;

@@ -160,6 +160,12 @@ namespace GraphCalculator
             {
                 _updatingTimelineUi = false;
             }
+
+            if (DynamicsInspectorPanel?.Visibility == Visibility.Visible)
+            {
+                UpdateDynamicsCurrentStateText();
+                if (DynamicsInspectorTabs?.SelectedIndex == 0) RedrawDynamicsTimeSeries();
+            }
         }
 
         private void AnalysisOption_Changed(object sender, RoutedEventArgs e)
@@ -281,7 +287,7 @@ namespace GraphCalculator
                 }
             }
 
-            DrawAnalysisSeries(points, Brushes.Black, width, height, new DoubleCollection { 2, 2 }, 2.0, 0.88);
+            DrawAnalysisSeries(points, ThemeBrush("TextBrush", Brushes.Black), width, height, new DoubleCollection { 2, 2 }, 2.0, 0.88);
         }
 
         private void DrawAnalysisSeries(
@@ -400,7 +406,7 @@ namespace GraphCalculator
         {
             spatialPoints = [];
             plotPoints = [];
-            color = Brushes.Black;
+            color = ThemeBrush("TextBrush", Brushes.Black);
             title = "Cross-section";
 
             if (CrossSectionEnabledCheckBox?.IsChecked != true
@@ -601,7 +607,7 @@ namespace GraphCalculator
             bool IsCurveSource(GraphExpression item) =>
                 item.IsVisible && item.Kind == GraphExpressionKind.Scalar && item.Compiled != null && !item.Compiled.DependsOnY;
             bool IsHlslSource(GraphExpression item) =>
-                item.IsVisible && item.CompiledParts.Any() && item.Kind is GraphExpressionKind.Scalar or GraphExpressionKind.TextureField2D or GraphExpressionKind.Implicit2D or GraphExpressionKind.Implicit3D;
+                item.IsVisible && item.CompiledParts.Any() && item.Kind is GraphExpressionKind.Scalar or GraphExpressionKind.TextureField2D or GraphExpressionKind.ComplexField2D or GraphExpressionKind.Implicit2D or GraphExpressionKind.Implicit3D;
 
             GraphExpression? curveSource = activeSource != null && IsCurveSource(activeSource)
                 ? activeSource
@@ -753,7 +759,6 @@ namespace GraphCalculator
         private static string BuildUnrealCurveTableCsv(IReadOnlyList<GraphPoint> points)
         {
             var sb = new StringBuilder("Name,Time,Value\n");
-            int i = 0;
             foreach (GraphPoint p in points.Where(p => double.IsFinite(p.Y)))
                 sb.Append("Curve,").Append(p.X.ToString("R", CultureInfo.InvariantCulture)).Append(',').Append(p.Y.ToString("R", CultureInfo.InvariantCulture)).AppendLine();
             return sb.ToString();

@@ -16,7 +16,8 @@ namespace GraphCalculator
         bool ThreeDimensional,
         IReadOnlyList<PresetExpression> Expressions,
         PlotViewport? PlotView = null,
-        SurfaceViewport? SurfaceView = null);
+        SurfaceViewport? SurfaceView = null,
+        string? FieldPalette = null);
 
     public static class PresetLibrary
     {
@@ -261,6 +262,14 @@ namespace GraphCalculator
                 SurfaceView: new SurfaceViewport(-2.5, 2.5, -2.5, 2.5, -3, 3)),
 
             new GraphPreset(
+                "3D surfaces",
+                "Gabriel's horn",
+                "Natural vector-function notation. r(u,v) is inferred as a parametric surface; u starts at 1 because the horn is the revolution of y=1/x for x>=1.",
+                true,
+                new[] { new PresetExpression("r(u,v)=(u,cos(v)/u,sin(v)/u)", "1", "30", "0", "2*pi") },
+                SurfaceView: new SurfaceViewport(0, 30, -1.2, 1.2, -1.2, 1.2)),
+
+            new GraphPreset(
                 "Piecewise",
                 "Clamped quadratic",
                 "A small piecewise example using comparisons and if(...).",
@@ -283,6 +292,102 @@ namespace GraphCalculator
                 false,
                 new[] { new PresetExpression("texture(fbm(x*frequency,y*frequency,octaves,persistence,lacunarity))", "-4", "4", "-4", "4") },
                 new PlotViewport(-4, 4, -4, 4)),
+
+            new GraphPreset(
+                "Complex & fractals",
+                "Mandelbrot growth",
+                "The finite-iteration survivor set. At t=0 this is the first radius-2 circle; each later escape test carves it toward the Mandelbrot set. The wider viewport is intentional so the initial circle is not cropped.",
+                false,
+                new[] { new PresetExpression("texture(mandelbrot(x,y,max(1,floor(1+8*t))))", "-2.2", "2.2", "-2.2", "2.2") },
+                new PlotViewport(-2.2, 2.2, -2.2, 2.2),
+                FieldPalette: "Fractal"),
+
+            new GraphPreset(
+                "Complex & fractals",
+                "Mandelbrot escape colouring",
+                "Smooth escape-time colouring for a developed Mandelbrot set. This is for boundary detail, not for the circle-to-set construction animation.",
+                false,
+                new[] { new PresetExpression("texture(mandelbrotsmooth(x,y,120))", "-2.5", "1", "-1.35", "1.35") },
+                new PlotViewport(-2.5, 1, -1.35, 1.35),
+                FieldPalette: "Fractal"),
+
+            new GraphPreset(
+                "Complex & fractals",
+                "Mandelbrot from recurrence",
+                "The same idea written as the recurrence itself: z[n+1]=z[n]^2+c with z[0]=0. In a 2D field c is x+iy. Use the Fractal palette for the classic escape-time look.",
+                false,
+                new[] { new PresetExpression("z[n+1]=z[n]^2+c\nz[0]=0\nN=max(1,floor(1+8*t))\nradius=2", "-2.2", "2.2", "-2.2", "2.2") },
+                new PlotViewport(-2.2, 2.2, -2.2, 2.2),
+                FieldPalette: "Fractal"),
+
+            new GraphPreset(
+                "Complex & fractals",
+                "Complex domain colouring",
+                "Phase becomes hue while magnitude controls brightness, making zeros, poles and winding immediately visible.",
+                false,
+                new[] { new PresetExpression("complexmap((z^3-1)/(z^3+1))", "-2.5", "2.5", "-2.5", "2.5") },
+                new PlotViewport(-2.5, 2.5, -2.5, 2.5)),
+
+            new GraphPreset(
+                "Complex & fractals",
+                "Julia from recurrence",
+                "A Julia set written as the recurrence itself. The initial value is the current x+iy pixel and the complex constant is fixed in the recurrence.",
+                false,
+                new[] { new PresetExpression("z[n+1]=z[n]^2+(-0.8+0.156*i)\nz[0]=x+y*i\nN=100\nradius=2", "-1.8", "1.8", "-1.4", "1.4") },
+                new PlotViewport(-1.8, 1.8, -1.4, 1.4),
+                FieldPalette: "Fractal"),
+
+            new GraphPreset(
+                "Parametric",
+                "Superformula flower",
+                "Gielis superformula used as the radius of a parametric curve. Change the seven arguments to move between rounded polygons, stars and organic profiles.",
+                false,
+                new[] { new PresetExpression("r(t)=(superformula(t,7,0.3,0.2,1.7,1,1)*cos(t),\n      superformula(t,7,0.3,0.2,1.7,1,1)*sin(t))", "0", "2*pi") },
+                new PlotViewport(-1.6, 1.6, -1.6, 1.6)),
+
+            new GraphPreset(
+                "Differential equations",
+                "Exponential decay ODE",
+                "A first-order ODE. One state variable is plotted against time. Change the coefficient or initial value and the RK4 solver updates the trajectory.",
+                false,
+                new[] { new PresetExpression("dy/dt=-0.8*y\ny(0)=1", "0", "8") },
+                new PlotViewport(0, 8, -0.1, 1.1)),
+
+            new GraphPreset(
+                "Dynamical systems",
+                "Lotka–Volterra phase portrait",
+                "Predator–prey dynamics as a two-state system. A 2D system is plotted as its phase trajectory rather than state-versus-time.",
+                false,
+                new[] { new PresetExpression("dprey/dt=1.1*prey-0.4*prey*predator\ndpredator/dt=0.1*prey*predator-0.4*predator\nprey(0)=10\npredator(0)=5", "0", "35") },
+                new PlotViewport(0, 18, 0, 10)),
+
+            new GraphPreset(
+                "Dynamical systems",
+                "Van der Pol oscillator",
+                "A nonlinear oscillator written as two coupled first-order equations. The graph shows the phase-space limit cycle.",
+                false,
+                new[] { new PresetExpression("dx/dt=y\ndy/dt=(1-x^2)*y-x\nx(0)=2\ny(0)=0", "0", "30") },
+                new PlotViewport(-3, 3, -4, 4)),
+
+            new GraphPreset(
+                "Dynamical systems",
+                "Lorenz attractor",
+                "The classic three-state chaotic system. Three coupled ODEs become a 3D trajectory integrated with RK4.",
+                true,
+                new[] { new PresetExpression("sigma=10\nrho=28\nbeta=8/3\ndx/dt=sigma*(y-x)\ndy/dt=x*(rho-z)-y\ndz/dt=x*y-beta*z\nx(0)=1\ny(0)=1\nz(0)=1", "0", "35") },
+                SurfaceView: new SurfaceViewport(-25, 25, -35, 35, 0, 55)),
+
+            new GraphPreset(
+                "Calculus",
+                "Primitive of sine",
+                "Numerically integrates sin(x) from 0 to the current x. The result should track 1-cos(x).",
+                false,
+                new[]
+                {
+                    new PresetExpression("primitive(sin(x),x,0)", "-2*pi", "2*pi"),
+                    new PresetExpression("1-cos(x)", "-2*pi", "2*pi")
+                },
+                new PlotViewport(-7, 7, -0.3, 2.3)),
 
             new GraphPreset(
                 "Implicit / SDF",

@@ -4,6 +4,7 @@ namespace GraphCalculator
     {
         FunctionLab,
         CurveDesigner,
-        EconomyDesigner
+        EconomyDesigner,
+        HlslLab
     }
 }

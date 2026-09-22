@@ -98,9 +98,11 @@ namespace GraphCalculator
             UpdateSurfaceCamera();
             UpdatePlotModeUi(refreshExpressions: false);
             InitializeAdvancedUi();
-            InitializeProductPass();
+            InitializeProductFeatures();
+            InitializeMathAndHlslUi();
             InitializeWorkspaceModes();
-            InitializeIntegrationPass();
+            InitializeProjectIntegration();
+            InitializeDynamicsInspectorAndTheme();
             UpdateViewRangeText();
             ScheduleRender(10);
 
@@ -118,6 +120,7 @@ namespace GraphCalculator
             _economyTimer.Stop();
             _undoCaptureTimer?.Stop();
             _projectAutosaveTimer.Stop();
+            ShutdownHlslRuntime();
 
             foreach (GraphParameter parameter in Parameters)
             {
@@ -227,8 +230,16 @@ namespace GraphCalculator
                     if (specialError != null) throw new FormatException(specialError);
 
                     item.Kind = kind;
-                    item.Compiled = null;
-                    item.Components = components.Select(c => CalculatorEngine.Compile(ExpandSharedAssets(c))).ToArray();
+                    if (kind == GraphExpressionKind.Scalar && components.Count == 1)
+                    {
+                        item.Components = [];
+                        item.Compiled = CalculatorEngine.Compile(ExpandSharedAssets(components[0]));
+                    }
+                    else
+                    {
+                        item.Compiled = null;
+                        item.Components = components.Select(c => CalculatorEngine.Compile(ExpandSharedAssets(c))).ToArray();
+                    }
                 }
                 else
                 {
@@ -251,12 +262,12 @@ namespace GraphCalculator
         {
             if (!item.CompiledParts.Any()) return;
 
-            if ((item.Kind is GraphExpressionKind.Parametric2D or GraphExpressionKind.VectorField2D or GraphExpressionKind.Implicit2D or GraphExpressionKind.TextureField2D) && _is3DMode)
+            if ((item.Kind is GraphExpressionKind.Parametric2D or GraphExpressionKind.VectorField2D or GraphExpressionKind.Implicit2D or GraphExpressionKind.TextureField2D or GraphExpressionKind.ComplexField2D or GraphExpressionKind.DifferentialEquation1D or GraphExpressionKind.DynamicalSystem2D) && _is3DMode)
             {
                 item.StatusText = "2D plot — switch to 2D";
                 return;
             }
-            if ((item.Kind is GraphExpressionKind.Parametric3D or GraphExpressionKind.ParametricSurface3D or GraphExpressionKind.Implicit3D) && !_is3DMode)
+            if ((item.Kind is GraphExpressionKind.Parametric3D or GraphExpressionKind.ParametricSurface3D or GraphExpressionKind.Implicit3D or GraphExpressionKind.DynamicalSystem3D) && !_is3DMode)
             {
                 item.StatusText = "3D plot — switch to 3D";
                 return;
@@ -318,6 +329,27 @@ namespace GraphCalculator
                     item.StatusText = $"Parametric surface   {u}   {v}" + parameters;
                     return;
                 }
+                case GraphExpressionKind.DifferentialEquation1D:
+                {
+                    string range = $"t: {FormatOptionalBound(domain.MinX, "t₀")} to {FormatOptionalBound(domain.MaxX, "t₀+10")}";
+                    string name = ExtractDynamicsStateNames(item.Expression, 1)[0];
+                    item.StatusText = $"ODE trajectory   t × {name}   " + range + parameters;
+                    return;
+                }
+                case GraphExpressionKind.DynamicalSystem2D:
+                {
+                    string range = $"t: {FormatOptionalBound(domain.MinX, "t₀")} to {FormatOptionalBound(domain.MaxX, "t₀+10")}";
+                    string[] names = ExtractDynamicsStateNames(item.Expression, 2);
+                    item.StatusText = $"2D dynamical system   phase: {names[0]} × {names[1]}   " + range + parameters;
+                    return;
+                }
+                case GraphExpressionKind.DynamicalSystem3D:
+                {
+                    string range = $"t: {FormatOptionalBound(domain.MinX, "t₀")} to {FormatOptionalBound(domain.MaxX, "t₀+10")}";
+                    string[] names = ExtractDynamicsStateNames(item.Expression, 3);
+                    item.StatusText = $"3D dynamical system   state: {names[0]} × {names[1]} × {names[2]}   " + range + parameters;
+                    return;
+                }
                 case GraphExpressionKind.VectorField2D:
                     item.StatusText = "Vector field   vx, vy" + parameters;
                     return;
@@ -330,6 +362,9 @@ namespace GraphCalculator
                 case GraphExpressionKind.TextureField2D:
                     item.StatusText = "2D scalar field / texture" + parameters;
                     return;
+                case GraphExpressionKind.ComplexField2D:
+                    item.StatusText = "Complex domain colouring   z = x + iy" + parameters;
+                    return;
             }
 
             CalculatorEngine.CompiledExpression compiled = item.Compiled!;
@@ -337,12 +372,21 @@ namespace GraphCalculator
             {
                 try
                 {
-                    item.StatusText = "= " + NumberFormatting.Format(compiled.Evaluate(values));
+                    if (compiled.IsPotentiallyComplex)
+                        item.StatusText = "= " + compiled.FormatValue(compiled.EvaluateComplex(values));
+                    else
+                        item.StatusText = "= " + NumberFormatting.Format(compiled.Evaluate(values));
                 }
                 catch (Exception ex)
                 {
                     item.StatusText = "Error: " + ex.Message;
                 }
+                return;
+            }
+
+            if (compiled.IsPotentiallyComplex && item.Kind == GraphExpressionKind.Scalar)
+            {
+                item.StatusText = "Complex result — use re(...), im(...), abs(...), arg(...), curve(re(...),im(...)), or complexmap(...)" + parameters;
                 return;
             }
 
@@ -393,7 +437,7 @@ namespace GraphCalculator
                     }
                     catch
                     {
-                        // Half-typed bounds should not make neigbouring controls flicker in and out.
+                        // Half-typed bounds should not make neighboring controls flicker in and out.
                     }
                 }
             }
@@ -538,7 +582,15 @@ namespace GraphCalculator
             if (name.Equals("t", StringComparison.OrdinalIgnoreCase)) return true;
             if (kind == GraphExpressionKind.ParametricSurface3D
                 && (name.Equals("u", StringComparison.OrdinalIgnoreCase) || name.Equals("v", StringComparison.OrdinalIgnoreCase))) return true;
+            if (kind is GraphExpressionKind.DifferentialEquation1D or GraphExpressionKind.DynamicalSystem2D or GraphExpressionKind.DynamicalSystem3D)
+            {
+                if (name.Equals("x", StringComparison.OrdinalIgnoreCase)) return true;
+                if ((kind is GraphExpressionKind.DynamicalSystem2D or GraphExpressionKind.DynamicalSystem3D)
+                    && name.Equals("y", StringComparison.OrdinalIgnoreCase)) return true;
+                if (kind == GraphExpressionKind.DynamicalSystem3D && name.Equals("z", StringComparison.OrdinalIgnoreCase)) return true;
+            }
             if (kind == GraphExpressionKind.Implicit3D && name.Equals("z", StringComparison.OrdinalIgnoreCase)) return true;
+            if (kind == GraphExpressionKind.ComplexField2D && name.Equals("z", StringComparison.OrdinalIgnoreCase)) return true;
             return IsAxisVariable(name);
         }
 
@@ -561,7 +613,7 @@ namespace GraphCalculator
                 return;
             }
 
-            if (e.Key == Key.Enter)
+            if (e.Key == Key.Enter && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
             {
                 if (box.DataContext is GraphExpression item)
                 {
@@ -716,7 +768,7 @@ namespace GraphCalculator
             Dictionary<string, double> parameterValues = GetParameterValues();
             List<SeriesRequest> active = GetActiveSeriesRequests(threeDimensional: false, parameterValues);
             List<SeriesRequest> lineSeries = active
-                .Where(request => request.Kind is GraphExpressionKind.Scalar or GraphExpressionKind.Parametric2D)
+                .Where(request => request.Kind is GraphExpressionKind.Scalar or GraphExpressionKind.Parametric2D or GraphExpressionKind.DifferentialEquation1D or GraphExpressionKind.DynamicalSystem2D)
                 .ToList();
             List<SeriesRequest> fields = active
                 .Where(request => request.Kind == GraphExpressionKind.VectorField2D)
@@ -740,6 +792,18 @@ namespace GraphCalculator
                         if (request.Kind == GraphExpressionKind.Parametric2D)
                         {
                             result.Add(ParametricCurveSampler.Sample2D(
+                                request.Components, parameterValues, request.Domain.MinX, request.Domain.MaxX,
+                                GetLineSampleCount(pixelWidth), token));
+                        }
+                        else if (request.Kind == GraphExpressionKind.DifferentialEquation1D)
+                        {
+                            result.Add(DynamicalSystemSampler.Sample1D(
+                                request.Components, parameterValues, request.Domain.MinX, request.Domain.MaxX,
+                                GetLineSampleCount(pixelWidth), token));
+                        }
+                        else if (request.Kind == GraphExpressionKind.DynamicalSystem2D)
+                        {
+                            result.Add(DynamicalSystemSampler.Sample2D(
                                 request.Components, parameterValues, request.Domain.MinX, request.Domain.MaxX,
                                 GetLineSampleCount(pixelWidth), token));
                         }
@@ -789,13 +853,16 @@ namespace GraphCalculator
 
                 DrawDerivativeOverlays(parameterValues, width, height);
                 DrawComparisonOverlay(parameterValues, width, height);
+                DrawDynamicsAnnotations(viewport, width, height);
 
                 int parametricCount = lineSeries.Count(request => request.Kind == GraphExpressionKind.Parametric2D);
-                int scalarCount = lineSeries.Count - parametricCount;
+                int dynamicsCount = lineSeries.Count(request => request.Kind is GraphExpressionKind.DifferentialEquation1D or GraphExpressionKind.DynamicalSystem2D);
+                int scalarCount = lineSeries.Count - parametricCount - dynamicsCount;
                 int textureCount = active.Count(request => request.Kind == GraphExpressionKind.TextureField2D);
+                int complexCount = active.Count(request => request.Kind == GraphExpressionKind.ComplexField2D);
                 GraphStatusText.Text = active.Count == 0
                     ? "No visible plots"
-                    : $"{scalarCount} functions · {parametricCount} curves · {fields.Count} vector fields · {implicitContours.Count} contours · {textureCount} fields";
+                    : $"{scalarCount} functions · {parametricCount} curves · {dynamicsCount} dynamics · {fields.Count} vector fields · {implicitContours.Count} contours · {textureCount} fields · {complexCount} complex maps";
 
                 UpdateViewRangeText();
             }
@@ -813,9 +880,9 @@ namespace GraphCalculator
 
         private void DrawGridAndAxes(PlotViewport viewport, double width, double height)
         {
-            var gridBrush = new SolidColorBrush(Color.FromRgb(232, 235, 240));
-            var axisBrush = new SolidColorBrush(Color.FromRgb(128, 136, 148));
-            var labelBrush = new SolidColorBrush(Color.FromRgb(91, 99, 111));
+            Brush gridBrush = ThemeBrush("GridLineBrush", new SolidColorBrush(Color.FromRgb(232, 235, 240)));
+            Brush axisBrush = ThemeBrush("AxisBrush", new SolidColorBrush(Color.FromRgb(128, 136, 148)));
+            Brush labelBrush = ThemeBrush("MutedTextBrush", new SolidColorBrush(Color.FromRgb(91, 99, 111)));
 
             int xTarget = Math.Clamp((int)(width / 105), 4, 12);
             int yTarget = Math.Clamp((int)(height / 85), 4, 10);
@@ -966,7 +1033,7 @@ namespace GraphCalculator
                 if (_is3DMode)
                 {
                     List<SeriesRequest> scalarSurfaces = active.Where(r => r.Kind == GraphExpressionKind.Scalar).ToList();
-                    List<SeriesRequest> curves = active.Where(r => r.Kind == GraphExpressionKind.Parametric3D).ToList();
+                    List<SeriesRequest> curves = active.Where(r => r.Kind is GraphExpressionKind.Parametric3D or GraphExpressionKind.DynamicalSystem3D).ToList();
                     List<SeriesRequest> parametricSurfaces = active.Where(r => r.Kind == GraphExpressionKind.ParametricSurface3D).ToList();
 
                     (double minX, double maxX, double minY, double maxY, double minZ, double maxZ)? geometryBounds =
@@ -976,8 +1043,9 @@ namespace GraphCalculator
                             foreach (SeriesRequest request in curves)
                             {
                                 cancellation.Token.ThrowIfCancellationRequested();
-                                List<GraphPoint3D> points = ParametricCurveSampler.Sample3D(
-                                    request.Components, parameterValues, request.Domain.MinX, request.Domain.MaxX, 900, cancellation.Token);
+                                List<GraphPoint3D> points = request.Kind == GraphExpressionKind.DynamicalSystem3D
+                                    ? DynamicalSystemSampler.Sample3D(request.Components, parameterValues, request.Domain.MinX, request.Domain.MaxX, 1400, cancellation.Token)
+                                    : ParametricCurveSampler.Sample3D(request.Components, parameterValues, request.Domain.MinX, request.Domain.MaxX, 900, cancellation.Token);
                                 var bounds = ParametricCurveSampler.FindBounds3D(points);
                                 if (bounds.HasValue) combined = Union3D(combined, bounds.Value);
                             }
@@ -1044,7 +1112,7 @@ namespace GraphCalculator
                 else
                 {
                     List<SeriesRequest> scalar = active.Where(r => r.Kind == GraphExpressionKind.Scalar).ToList();
-                    List<SeriesRequest> curves = active.Where(r => r.Kind == GraphExpressionKind.Parametric2D).ToList();
+                    List<SeriesRequest> curves = active.Where(r => r.Kind is GraphExpressionKind.Parametric2D or GraphExpressionKind.DifferentialEquation1D or GraphExpressionKind.DynamicalSystem2D).ToList();
                     List<SeriesRequest> fields = active.Where(r => r.Kind == GraphExpressionKind.VectorField2D).ToList();
 
                     if (scalar.Count == 0 && curves.Count == 0 && fields.Count > 0)
@@ -1075,8 +1143,12 @@ namespace GraphCalculator
                             (double minX, double maxX, double minY, double maxY)? combined = null;
                             foreach (SeriesRequest request in curves)
                             {
-                                List<GraphPoint> points = ParametricCurveSampler.Sample2D(
-                                    request.Components, parameterValues, request.Domain.MinX, request.Domain.MaxX, 1200, cancellation.Token);
+                                List<GraphPoint> points = request.Kind switch
+                                {
+                                    GraphExpressionKind.DifferentialEquation1D => DynamicalSystemSampler.Sample1D(request.Components, parameterValues, request.Domain.MinX, request.Domain.MaxX, 1600, cancellation.Token),
+                                    GraphExpressionKind.DynamicalSystem2D => DynamicalSystemSampler.Sample2D(request.Components, parameterValues, request.Domain.MinX, request.Domain.MaxX, 1600, cancellation.Token),
+                                    _ => ParametricCurveSampler.Sample2D(request.Components, parameterValues, request.Domain.MinX, request.Domain.MaxX, 1200, cancellation.Token)
+                                };
                                 var bounds = ParametricCurveSampler.FindBounds2D(points);
                                 if (bounds.HasValue) combined = Union2D(combined, bounds.Value);
                             }
@@ -1366,6 +1438,8 @@ namespace GraphCalculator
                 catch { }
             }
 
+            AppendDynamicsHover(point, width, height);
+
             HoverPanel.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
             double panelWidth = HoverPanel.DesiredSize.Width;
             double panelHeight = HoverPanel.DesiredSize.Height;
@@ -1434,6 +1508,16 @@ namespace GraphCalculator
                 PlotModeComboBox.SelectedIndex = _is3DMode ? 1 : 0;
                 if (preset.PlotView.HasValue) _viewport = preset.PlotView.Value;
                 if (preset.SurfaceView.HasValue) _surfaceViewport = preset.SurfaceView.Value;
+                if (!string.IsNullOrWhiteSpace(preset.FieldPalette))
+                {
+                    FieldPreviewPaletteComboBox.SelectedIndex = preset.FieldPalette switch
+                    {
+                        "Grayscale" => 0,
+                        "Heat" => 2,
+                        "Fractal" => 3,
+                        _ => 1
+                    };
+                }
 
                 foreach (PresetExpression source in preset.Expressions)
                 {
@@ -1484,6 +1568,7 @@ namespace GraphCalculator
                     TimelineTime = _timelineTime,
                     TimelineSpeed = _timelineSpeed,
                     TimelineLoop = _timelineLoop,
+                    HlslScratchText = HlslPreviewTextBox?.Text ?? string.Empty,
                     ShowDerivative = ShowDerivativeCheckBox.IsChecked == true,
                     ComparisonEnabled = ComparisonEnabledCheckBox.IsChecked == true,
                     ComparisonMode = (ComparisonModeComboBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "A - B",
@@ -1569,6 +1654,13 @@ namespace GraphCalculator
 
         private void SaveWorkspaceButton_Click(object sender, RoutedEventArgs e)
         {
+            bool saveAs = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
+            if (!saveAs && !string.IsNullOrWhiteSpace(_currentWorkspacePath))
+            {
+                SaveWorkspaceDirect(_currentWorkspacePath!);
+                return;
+            }
+
             var dialog = new SaveFileDialog
             {
                 Title = "Save graph workspace",
@@ -1690,7 +1782,7 @@ namespace GraphCalculator
                 CrossSectionValueTextBox.Text = string.IsNullOrWhiteSpace(workspace.CrossSectionValue) ? "0" : workspace.CrossSectionValue;
                 RenderQualityComboBox.SelectedIndex = _renderQuality switch { RenderQuality.Draft => 0, RenderQuality.High => 2, RenderQuality.Ultra => 3, _ => 1 };
                 FieldPreviewEnabledCheckBox.IsChecked = workspace.FieldPreviewEnabled;
-                FieldPreviewPaletteComboBox.SelectedIndex = workspace.FieldPreviewPalette switch { "Grayscale" => 0, "Heat" => 2, _ => 1 };
+                FieldPreviewPaletteComboBox.SelectedIndex = workspace.FieldPreviewPalette switch { "Grayscale" => 0, "Heat" => 2, "Fractal" => 3, _ => 1 };
                 if (Expressions.Count > 0) FieldPreviewExpressionComboBox.SelectedIndex = Math.Clamp(workspace.FieldPreviewExpressionIndex, 0, Expressions.Count - 1);
                 _parameterStateA.Clear(); foreach (var pair in workspace.ParameterStateA ?? new Dictionary<string, double>()) _parameterStateA[pair.Key] = pair.Value;
                 _parameterStateB.Clear(); foreach (var pair in workspace.ParameterStateB ?? new Dictionary<string, double>()) _parameterStateB[pair.Key] = pair.Value;
@@ -1758,6 +1850,8 @@ namespace GraphCalculator
                 ResetEconomyRandomStreams();
                 foreach (EconomyLink link in EconomyLinks) _economyNextActivation[link.Id] = Math.Max(link.StartTime, _economyTime);
                 RecordEconomyHistory();
+                if (HlslPreviewTextBox != null)
+                    HlslPreviewTextBox.Text = workspace.HlslScratchText ?? string.Empty;
                 UpdateTimelineUi();
             }
             finally
@@ -1910,6 +2004,26 @@ namespace GraphCalculator
                             .Append(Invariant(point.X)).Append(',').Append(Invariant(point.Y)).Append(",,,").AppendLine();
                     }
                 }
+                else if (!threeDimensional && request.Kind == GraphExpressionKind.DifferentialEquation1D)
+                {
+                    List<GraphPoint> points = DynamicalSystemSampler.Sample1D(
+                        request.Components, parameterValues, request.Domain.MinX, request.Domain.MaxX, 1800, cancellation.Token);
+                    foreach (GraphPoint point in points.Where(point => double.IsFinite(point.X) && double.IsFinite(point.Y)))
+                    {
+                        csv.Append(expression).Append(",ode1d,").Append(sampleIndex++).Append(',')
+                            .Append(Invariant(point.X)).Append(',').Append(Invariant(point.Y)).Append(",,,").AppendLine();
+                    }
+                }
+                else if (!threeDimensional && request.Kind == GraphExpressionKind.DynamicalSystem2D)
+                {
+                    List<GraphPoint> points = DynamicalSystemSampler.Sample2D(
+                        request.Components, parameterValues, request.Domain.MinX, request.Domain.MaxX, 1800, cancellation.Token);
+                    foreach (GraphPoint point in points.Where(point => double.IsFinite(point.X) && double.IsFinite(point.Y)))
+                    {
+                        csv.Append(expression).Append(",dynamics2d,").Append(sampleIndex++).Append(',')
+                            .Append(Invariant(point.X)).Append(',').Append(Invariant(point.Y)).Append(",,,").AppendLine();
+                    }
+                }
                 else if (!threeDimensional && request.Kind == GraphExpressionKind.VectorField2D)
                 {
                     List<VectorFieldPoint> points = VectorFieldSampler.Sample(
@@ -1961,6 +2075,30 @@ namespace GraphCalculator
                         }
                     }
                 }
+                else if (!threeDimensional && request.Kind == GraphExpressionKind.ComplexField2D)
+                {
+                    double minX = Math.Max(_viewport.MinX, request.Domain.MinX ?? _viewport.MinX);
+                    double maxX = Math.Min(_viewport.MaxX, request.Domain.MaxX ?? _viewport.MaxX);
+                    double minY = Math.Max(_viewport.MinY, request.Domain.MinY ?? _viewport.MinY);
+                    double maxY = Math.Min(_viewport.MaxY, request.Domain.MaxY ?? _viewport.MaxY);
+                    const int res = 96;
+                    for (int row = 0; row < res; row++)
+                    {
+                        double y = minY + (maxY - minY) * row / (res - 1.0);
+                        for (int column = 0; column < res; column++)
+                        {
+                            double x = minX + (maxX - minX) * column / (res - 1.0);
+                            System.Numerics.Complex value;
+                            try { value = request.Components[0].EvaluateComplex(x, y, parameterValues); }
+                            catch { continue; }
+                            if (!double.IsFinite(value.Real) || !double.IsFinite(value.Imaginary)) continue;
+                            csv.Append(expression).Append(",complex-field,").Append(sampleIndex++).Append(',')
+                                .Append(Invariant(x)).Append(',').Append(Invariant(y)).Append(',')
+                                .Append(Invariant(System.Numerics.Complex.Abs(value))).Append(',')
+                                .Append(Invariant(value.Real)).Append(',').Append(Invariant(value.Imaginary)).AppendLine();
+                        }
+                    }
+                }
                 else if (threeDimensional && request.Kind == GraphExpressionKind.Parametric3D)
                 {
                     List<GraphPoint3D> points = ParametricCurveSampler.Sample3D(
@@ -1968,6 +2106,17 @@ namespace GraphCalculator
                     foreach (GraphPoint3D point in points.Where(ParametricSurfaceSampler.IsFinite))
                     {
                         csv.Append(expression).Append(",parametric3d,").Append(sampleIndex++).Append(',')
+                            .Append(Invariant(point.X)).Append(',').Append(Invariant(point.Y)).Append(',')
+                            .Append(Invariant(point.Z)).Append(",,").AppendLine();
+                    }
+                }
+                else if (threeDimensional && request.Kind == GraphExpressionKind.DynamicalSystem3D)
+                {
+                    List<GraphPoint3D> points = DynamicalSystemSampler.Sample3D(
+                        request.Components, parameterValues, request.Domain.MinX, request.Domain.MaxX, 2400, cancellation.Token);
+                    foreach (GraphPoint3D point in points.Where(ParametricSurfaceSampler.IsFinite))
+                    {
+                        csv.Append(expression).Append(",dynamics3d,").Append(sampleIndex++).Append(',')
                             .Append(Invariant(point.X)).Append(',').Append(Invariant(point.Y)).Append(',')
                             .Append(Invariant(point.Z)).Append(",,").AppendLine();
                     }
@@ -2057,6 +2206,7 @@ namespace GraphCalculator
             PlotRangePanel.Visibility = _is3DMode ? Visibility.Collapsed : Visibility.Visible;
             SurfaceRangePanel.Visibility = _is3DMode ? Visibility.Visible : Visibility.Collapsed;
             SurfaceLegend.Visibility = _is3DMode ? Visibility.Visible : Visibility.Collapsed;
+            EnsureGraphToolsTabSelection();
             TwoDToolsPanel.Visibility = _is3DMode ? Visibility.Collapsed : Visibility.Visible;
             ThreeDToolsPanel.Visibility = _is3DMode ? Visibility.Visible : Visibility.Collapsed;
             if (_is3DMode)
@@ -2072,12 +2222,12 @@ namespace GraphCalculator
                 : "Scroll to zoom · drag to pan";
 
             ExamplesText.Text = _is3DMode
-                ? "Try: surface((2+0.7*cos(v))*cos(u),(2+0.7*cos(v))*sin(u),0.7*sin(v)), implicit3(x^2+y^2+z^2-9), curve3(3*cos(t),3*sin(t),t/3)"
-                : "Try: if(x<0,0,x^2), implicit(x^2+y^2-9), texture(fbm(x,y,4,0.5,2)), field(-y,x)";
+                ? "Try: r(u,v)=((2+0.7*cos(v))*cos(u),(2+0.7*cos(v))*sin(u),0.7*sin(v)), y^2+z^2=1/x^2, or a 3-line Lorenz ODE system"
+                : "Try multiline maths: r(t)=(cos(t),sin(t)), a recurrence block, dy/dt=-y with y(0)=1, or a 2D phase system";
 
             FooterHintText.Text = _is3DMode
-                ? "surface(...) draws parametric geometry · implicit3(f) draws f=0 isosurfaces · right-click probes mesh normals"
-                : "Ctrl+Space suggests functions · implicit(f) traces f=0 · texture(f) previews 2D fields · comparisons support piecewise math";
+                ? "Natural vector notation and 3D ODE trajectories are supported · right-click probes mesh normals"
+                : "Enter adds a line · Ctrl+Enter refreshes · Ctrl+Space suggests functions · multiline recurrences and ODE systems are supported";
 
             HideHover();
             if (!_is3DMode)
@@ -2108,7 +2258,7 @@ namespace GraphCalculator
             Dictionary<string, double> parameterValues = GetParameterValues();
             List<SeriesRequest> active = GetActiveSeriesRequests(threeDimensional: true, parameterValues);
             List<SeriesRequest> surfaces = active.Where(request => request.Kind == GraphExpressionKind.Scalar).ToList();
-            List<SeriesRequest> curves = active.Where(request => request.Kind == GraphExpressionKind.Parametric3D).ToList();
+            List<SeriesRequest> curves = active.Where(request => request.Kind is GraphExpressionKind.Parametric3D or GraphExpressionKind.DynamicalSystem3D).ToList();
             List<SeriesRequest> parametricSurfaces = active.Where(request => request.Kind == GraphExpressionKind.ParametricSurface3D).ToList();
             List<SeriesRequest> implicitSurfaces = active.Where(request => request.Kind == GraphExpressionKind.Implicit3D).ToList();
 
@@ -2132,8 +2282,9 @@ namespace GraphCalculator
                     foreach (SeriesRequest request in curves)
                     {
                         token.ThrowIfCancellationRequested();
-                        curveSamples.Add(ParametricCurveSampler.Sample3D(
-                            request.Components, parameterValues, request.Domain.MinX, request.Domain.MaxX, GetParametricCurveSampleCount(true), token));
+                        curveSamples.Add(request.Kind == GraphExpressionKind.DynamicalSystem3D
+                            ? DynamicalSystemSampler.Sample3D(request.Components, parameterValues, request.Domain.MinX, request.Domain.MaxX, GetParametricCurveSampleCount(true), token)
+                            : ParametricCurveSampler.Sample3D(request.Components, parameterValues, request.Domain.MinX, request.Domain.MaxX, GetParametricCurveSampleCount(true), token));
                     }
 
                     var parametricSurfaceSamples = new List<ParametricSurfaceSample>(parametricSurfaces.Count);
@@ -2200,7 +2351,8 @@ namespace GraphCalculator
 
                 GraphStatusText.Text = active.Count == 0
                     ? "No visible 3D plots"
-                    : $"{surfaces.Count} height fields · {parametricSurfaces.Count} param surfaces · {implicitSurfaces.Count} implicit · {curves.Count} curves";
+                    : $"{surfaces.Count} height fields · {parametricSurfaces.Count} param surfaces · {implicitSurfaces.Count} implicit · {curves.Count} curves/dynamics";
+                UpdateDynamicsInspector();
                 UpdateViewRangeText();
             }
             catch (OperationCanceledException)
@@ -2312,8 +2464,8 @@ namespace GraphCalculator
                 if (!item.IsVisible || !item.CompiledParts.Any() || string.IsNullOrWhiteSpace(item.Expression)) continue;
 
                 bool compatible = threeDimensional
-                    ? item.Kind is GraphExpressionKind.Scalar or GraphExpressionKind.Parametric3D or GraphExpressionKind.ParametricSurface3D or GraphExpressionKind.Implicit3D
-                    : item.Kind is GraphExpressionKind.Scalar or GraphExpressionKind.Parametric2D or GraphExpressionKind.VectorField2D or GraphExpressionKind.Implicit2D or GraphExpressionKind.TextureField2D;
+                    ? item.Kind is GraphExpressionKind.Scalar or GraphExpressionKind.Parametric3D or GraphExpressionKind.ParametricSurface3D or GraphExpressionKind.Implicit3D or GraphExpressionKind.DynamicalSystem3D
+                    : item.Kind is GraphExpressionKind.Scalar or GraphExpressionKind.Parametric2D or GraphExpressionKind.VectorField2D or GraphExpressionKind.Implicit2D or GraphExpressionKind.TextureField2D or GraphExpressionKind.ComplexField2D or GraphExpressionKind.DifferentialEquation1D or GraphExpressionKind.DynamicalSystem2D;
                 if (!compatible) continue;
 
                 if (!threeDimensional && item.Kind == GraphExpressionKind.Scalar && item.Compiled?.DependsOnY == true) continue;
@@ -2352,7 +2504,7 @@ namespace GraphCalculator
             domain = default;
             error = null;
 
-            bool includeY = item.Kind is GraphExpressionKind.ParametricSurface3D or GraphExpressionKind.VectorField2D or GraphExpressionKind.Implicit2D or GraphExpressionKind.Implicit3D or GraphExpressionKind.TextureField2D
+            bool includeY = item.Kind is GraphExpressionKind.ParametricSurface3D or GraphExpressionKind.VectorField2D or GraphExpressionKind.Implicit2D or GraphExpressionKind.Implicit3D or GraphExpressionKind.TextureField2D or GraphExpressionKind.ComplexField2D
                 || ((includeYOverride ?? _is3DMode) && item.Kind == GraphExpressionKind.Scalar);
 
             if (!TryReadOptionalScalar(item.DomainMinX, parameterValues, out double? minX, out error)
@@ -2365,7 +2517,7 @@ namespace GraphCalculator
             {
                 string axis = item.Kind switch
                 {
-                    GraphExpressionKind.Parametric2D or GraphExpressionKind.Parametric3D => "t",
+                    GraphExpressionKind.Parametric2D or GraphExpressionKind.Parametric3D or GraphExpressionKind.DifferentialEquation1D or GraphExpressionKind.DynamicalSystem2D or GraphExpressionKind.DynamicalSystem3D => "t",
                     GraphExpressionKind.ParametricSurface3D => "u",
                     _ => "x"
                 };
@@ -2395,7 +2547,7 @@ namespace GraphCalculator
             return true;
         }
 
-        private static bool TryReadOptionalScalar(
+        private bool TryReadOptionalScalar(
             string text,
             IDictionary<string, double> variables,
             out double? value,
@@ -2415,7 +2567,7 @@ namespace GraphCalculator
             return true;
         }
 
-        private static bool TryEvaluateScalar(
+        private bool TryEvaluateScalar(
             string text,
             IDictionary<string, double> variables,
             out double value,

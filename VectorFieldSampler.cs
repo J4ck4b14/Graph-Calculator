@@ -58,7 +58,7 @@ namespace GraphCalculator
                     }
                     catch
                     {
-                        // A singluar arrow is cheaper to ignore than to poison the whole field.
+                        // A singular arrow is cheaper to ignore than to poison the whole field.
                     }
                 }
             }

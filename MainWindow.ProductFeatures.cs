@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Numerics;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -65,7 +66,7 @@ namespace GraphCalculator
             List<WorkspaceEconomyRecipe> EconomyRecipes,
             List<WorkspaceEconomyResourceStyle> EconomyResourceStyles);
 
-        private void InitializeProductPass()
+        private void InitializeProductFeatures()
         {
             _undoCaptureTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(520) };
             _undoCaptureTimer.Tick += (_, _) => CommitPendingUndoGroup();
@@ -152,7 +153,7 @@ namespace GraphCalculator
 
         private bool TryFitDomainOnlyPlots(IReadOnlyList<SeriesRequest> active)
         {
-            if (active.Count == 0 || active.Any(r => r.Kind is not (GraphExpressionKind.Implicit2D or GraphExpressionKind.Implicit3D or GraphExpressionKind.TextureField2D)))
+            if (active.Count == 0 || active.Any(r => r.Kind is not (GraphExpressionKind.Implicit2D or GraphExpressionKind.Implicit3D or GraphExpressionKind.TextureField2D or GraphExpressionKind.ComplexField2D)))
                 return false;
 
             if (_is3DMode)
@@ -227,7 +228,7 @@ namespace GraphCalculator
             source = FieldPreviewExpressionComboBox?.SelectedItem as GraphExpression;
             if (source == null || !source.IsVisible) return null;
 
-            if (source.Kind == GraphExpressionKind.TextureField2D || source.Kind == GraphExpressionKind.Implicit2D)
+            if (source.Kind is GraphExpressionKind.TextureField2D or GraphExpressionKind.ComplexField2D or GraphExpressionKind.Implicit2D)
                 return source.Components.FirstOrDefault();
             return source.Kind == GraphExpressionKind.Scalar ? source.Compiled : null;
         }
@@ -235,7 +236,7 @@ namespace GraphCalculator
         private void UpdateFieldPreview(IDictionary<string, double> variables)
         {
             bool explicitPreview = FieldPreviewEnabledCheckBox?.IsChecked == true;
-            GraphExpression? automatic = Expressions.FirstOrDefault(e => e.IsVisible && e.Kind == GraphExpressionKind.TextureField2D && e.Components.Count > 0);
+            GraphExpression? automatic = Expressions.FirstOrDefault(e => e.IsVisible && (e.Kind is GraphExpressionKind.TextureField2D or GraphExpressionKind.ComplexField2D) && e.Components.Count > 0);
             if (!explicitPreview && automatic == null)
             {
                 FieldPreviewImage.Visibility = Visibility.Collapsed;
@@ -260,7 +261,9 @@ namespace GraphCalculator
             }
 
             int res = GetFieldPreviewResolution();
-            BitmapSource bitmap = BuildFieldBitmap(expression, variables, domain, res, res, GetFieldPaletteName(), cropToDomain: false);
+            BitmapSource bitmap = source.Kind == GraphExpressionKind.ComplexField2D
+                ? BuildComplexFieldBitmap(expression, variables, domain, res, res, cropToDomain: false)
+                : BuildFieldBitmap(expression, variables, domain, res, res, GetFieldPaletteName(), cropToDomain: false);
             FieldPreviewImage.Source = bitmap;
             FieldPreviewImage.Visibility = Visibility.Visible;
         }
@@ -337,6 +340,7 @@ namespace GraphCalculator
                 {
                     "Grayscale" => Gray((value - min) / (max - min)),
                     "Heat" => Heat((value - min) / (max - min)),
+                    "Fractal" => FractalColour((value - min) / (max - min)),
                     _ => Signed(value / maxAbs)
                 };
                 pixels[o] = b;
@@ -348,6 +352,103 @@ namespace GraphCalculator
             BitmapSource bitmap = BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgra32, null, pixels, width * 4);
             bitmap.Freeze();
             return bitmap;
+        }
+
+        private BitmapSource BuildComplexFieldBitmap(
+            CalculatorEngine.CompiledExpression expression,
+            IDictionary<string, double> variables,
+            ExpressionDomain domain,
+            int width,
+            int height,
+            bool cropToDomain)
+        {
+            width = Math.Clamp(width, 32, 1024);
+            height = Math.Clamp(height, 32, 1024);
+
+            double domainMinX = Math.Max(_viewport.MinX, domain.MinX ?? _viewport.MinX);
+            double domainMaxX = Math.Min(_viewport.MaxX, domain.MaxX ?? _viewport.MaxX);
+            double domainMinY = Math.Max(_viewport.MinY, domain.MinY ?? _viewport.MinY);
+            double domainMaxY = Math.Min(_viewport.MaxY, domain.MaxY ?? _viewport.MaxY);
+            if (!(domainMinX < domainMaxX) || !(domainMinY < domainMaxY))
+                return BitmapSource.Create(1, 1, 96, 96, PixelFormats.Bgra32, null, new byte[] { 255, 255, 255, 255 }, 4);
+
+            double minX = cropToDomain ? domainMinX : _viewport.MinX;
+            double maxX = cropToDomain ? domainMaxX : _viewport.MaxX;
+            double minY = cropToDomain ? domainMinY : _viewport.MinY;
+            double maxY = cropToDomain ? domainMaxY : _viewport.MaxY;
+            byte[] pixels = new byte[width * height * 4];
+
+            for (int py = 0; py < height; py++)
+            {
+                double y = maxY - (maxY - minY) * py / Math.Max(1, height - 1.0);
+                for (int px = 0; px < width; px++)
+                {
+                    double x = minX + (maxX - minX) * px / Math.Max(1, width - 1.0);
+                    int o = (py * width + px) * 4;
+                    bool inDomain = x >= domainMinX && x <= domainMaxX && y >= domainMinY && y <= domainMaxY;
+                    if (!inDomain)
+                    {
+                        pixels[o + 3] = 0;
+                        continue;
+                    }
+
+                    Complex value;
+                    try { value = expression.EvaluateComplex(x, y, variables); }
+                    catch
+                    {
+                        pixels[o + 3] = 0;
+                        continue;
+                    }
+
+                    if (!double.IsFinite(value.Real) || !double.IsFinite(value.Imaginary))
+                    {
+                        pixels[o + 3] = 0;
+                        continue;
+                    }
+
+                    double phase = Math.Atan2(value.Imaginary, value.Real);
+                    double hue = (phase + Math.PI) / (2.0 * Math.PI);
+                    double magnitude = Complex.Abs(value);
+                    // Log rings keep both tiny and huge magnitudes readable. A subtle ring modulation
+                    // makes poles/zeros obvious without turning the result into a checkerboard.
+                    double logMagnitude = Math.Log(1.0 + magnitude);
+                    double ring = 0.88 + 0.12 * Math.Cos(logMagnitude * 2.0 * Math.PI / Math.Log(2.0));
+                    double brightness = Math.Clamp((0.48 + 0.45 * (1.0 - Math.Exp(-0.55 * logMagnitude))) * ring, 0.12, 1.0);
+                    double saturation = Math.Clamp(0.82 - 0.12 * Math.Exp(-magnitude), 0.62, 0.9);
+                    (byte r, byte g, byte b) = Hsv(hue, saturation, brightness);
+                    pixels[o] = b;
+                    pixels[o + 1] = g;
+                    pixels[o + 2] = r;
+                    pixels[o + 3] = 255;
+                }
+            }
+
+            BitmapSource bitmap = BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgra32, null, pixels, width * 4);
+            bitmap.Freeze();
+            return bitmap;
+        }
+
+        private static (byte r, byte g, byte b) Hsv(double h, double s, double v)
+        {
+            h = h - Math.Floor(h);
+            s = Math.Clamp(s, 0, 1);
+            v = Math.Clamp(v, 0, 1);
+            double scaled = h * 6.0;
+            int sector = (int)Math.Floor(scaled) % 6;
+            double f = scaled - Math.Floor(scaled);
+            double p = v * (1.0 - s);
+            double q = v * (1.0 - s * f);
+            double t = v * (1.0 - s * (1.0 - f));
+            (double r, double g, double b) = sector switch
+            {
+                0 => (v, t, p),
+                1 => (q, v, p),
+                2 => (p, v, t),
+                3 => (p, q, v),
+                4 => (t, p, v),
+                _ => (v, p, q)
+            };
+            return ((byte)Math.Round(r * 255), (byte)Math.Round(g * 255), (byte)Math.Round(b * 255));
         }
 
         private static (byte r, byte g, byte b) Gray(double t)
@@ -377,6 +478,22 @@ namespace GraphCalculator
             return ((byte)(r * 255), (byte)(g * 255), (byte)(b * 255));
         }
 
+        private static (byte r, byte g, byte b) FractalColour(double t)
+        {
+            t = Math.Clamp(t, 0, 1);
+            // Escape-time helpers reserve 1 for points that survived every iteration.
+            // Keep those black and let the boundary climb from deep blue through cyan to white.
+            if (t >= 0.999999) return (0, 0, 0);
+            double edge = Math.Clamp(Math.Pow(t, 0.55), 0, 1);
+            double r = Math.Pow(edge, 3.0);
+            double g = Math.Pow(edge, 1.45);
+            double b = 0.18 + 0.82 * Math.Pow(edge, 0.72);
+            double glow = Math.Clamp(0.55 + 0.75 * edge, 0, 1);
+            return ((byte)Math.Round(255 * Math.Clamp(r * glow, 0, 1)),
+                    (byte)Math.Round(255 * Math.Clamp(g * glow, 0, 1)),
+                    (byte)Math.Round(255 * Math.Clamp(b * glow, 0, 1)));
+        }
+
         private void ExportFieldTextureButton_Click(object sender, RoutedEventArgs e)
         {
             CalculatorEngine.CompiledExpression? expression = GetFieldPreviewExpression(out GraphExpression? source);
@@ -402,7 +519,9 @@ namespace GraphCalculator
             };
             if (dialog.ShowDialog(this) != true) return;
 
-            BitmapSource bitmap = BuildFieldBitmap(expression, variables, domain, 512, 512, GetFieldPaletteName(), cropToDomain: true);
+            BitmapSource bitmap = source.Kind == GraphExpressionKind.ComplexField2D
+                ? BuildComplexFieldBitmap(expression, variables, domain, 512, 512, cropToDomain: true)
+                : BuildFieldBitmap(expression, variables, domain, 512, 512, GetFieldPaletteName(), cropToDomain: true);
             SaveBitmap(dialog.FileName, bitmap, new PngBitmapEncoder());
             GraphStatusText.Text = "Texture exported";
         }
@@ -862,11 +981,13 @@ namespace GraphCalculator
         private string BuildHlslExport(GraphExpression source)
         {
             CalculatorEngine.CompiledExpression expression = source.Compiled ?? source.Components.First();
-            string body = expression.ToHlsl();
+            bool complexPlane = source.Kind == GraphExpressionKind.ComplexField2D;
+            string body = expression.ToHlsl(complexPlane, out bool returnsComplex);
 
-            bool usesX = expression.Variables.Contains("x", StringComparer.OrdinalIgnoreCase);
-            bool usesY = expression.Variables.Contains("y", StringComparer.OrdinalIgnoreCase);
-            bool usesZ = expression.Variables.Contains("z", StringComparer.OrdinalIgnoreCase);
+            bool planeZ = complexPlane && expression.Variables.Contains("z", StringComparer.OrdinalIgnoreCase);
+            bool usesX = expression.Variables.Contains("x", StringComparer.OrdinalIgnoreCase) || planeZ;
+            bool usesY = expression.Variables.Contains("y", StringComparer.OrdinalIgnoreCase) || planeZ;
+            bool usesZ = !complexPlane && expression.Variables.Contains("z", StringComparer.OrdinalIgnoreCase);
             string[] variables = expression.Variables
                 .Where(name => !name.Equals("x", StringComparison.OrdinalIgnoreCase)
                     && !name.Equals("y", StringComparison.OrdinalIgnoreCase)
@@ -900,8 +1021,21 @@ namespace GraphCalculator
             sb.AppendLine("float gc_hash(float2 p,float seed) { return frac(sin(dot(p,float2(127.1,311.7))+seed*74.7)*43758.5453123); }");
             sb.AppendLine("float gc_noise(float2 p,float seed) { float2 i=floor(p); float2 f=frac(p); f=f*f*f*(f*(f*6.0-15.0)+10.0); float a=gc_hash(i,seed), b=gc_hash(i+float2(1,0),seed), c=gc_hash(i+float2(0,1),seed), d=gc_hash(i+1,seed); return (lerp(lerp(a,b,f.x),lerp(c,d,f.x),f.y)*2.0)-1.0; }");
             sb.AppendLine("float gc_fbm(float2 p,float octaves,float persistence,float lacunarity) { float amp=1.0,freq=1.0,total=0.0,weight=0.0; [loop] for(int i=0;i<10;i++){ if(i>=(int)round(octaves)) break; total+=gc_noise(p*freq,i*101.0)*amp; weight+=amp; amp*=saturate(persistence); freq*=max(lacunarity,1.01); } return weight>0.0?total/weight:0.0; }");
+            sb.AppendLine("float gc_superformula(float angle,float m,float n1,float n2,float n3,float a,float b) { if(abs(n1)<1e-7||abs(a)<1e-7||abs(b)<1e-7) return 0.0; float c=pow(abs(cos(m*angle/4.0)/a),n2); float d=pow(abs(sin(m*angle/4.0)/b),n3); return pow(max(c+d,1e-7),-1.0/n1); }");
+            sb.AppendLine("float2 gc_cmul(float2 a,float2 b) { return float2(a.x*b.x-a.y*b.y, a.x*b.y+a.y*b.x); }");
+            sb.AppendLine("float2 gc_cdiv(float2 a,float2 b) { float d=dot(b,b); return d<1e-12?float2(0,0):float2((a.x*b.x+a.y*b.y)/d,(a.y*b.x-a.x*b.y)/d); }");
+            sb.AppendLine("float2 gc_clog(float2 z) { return float2(log(max(length(z),1e-12)), atan2(z.y,z.x)); }");
+            sb.AppendLine("float2 gc_cexp(float2 z) { float e=exp(z.x); return e*float2(cos(z.y),sin(z.y)); }");
+            sb.AppendLine("float2 gc_cpow(float2 a,float2 b) { return gc_cexp(gc_cmul(b,gc_clog(a))); }");
+            sb.AppendLine("float2 gc_csqrt(float2 z) { float r=length(z); float u=sqrt(max(0.0,(r+z.x)*0.5)); float v=(z.y<0?-1.0:1.0)*sqrt(max(0.0,(r-z.x)*0.5)); return float2(u,v); }");
+            sb.AppendLine("float2 gc_csin(float2 z) { return float2(sin(z.x)*cosh(z.y), cos(z.x)*sinh(z.y)); }");
+            sb.AppendLine("float2 gc_ccos(float2 z) { return float2(cos(z.x)*cosh(z.y), -sin(z.x)*sinh(z.y)); }");
+            sb.AppendLine("float gc_mandelbrotMask(float x,float y,float iterations) { float2 z=float2(0.0,0.0),c=float2(x,y); int count=clamp((int)floor(iterations),1,10000); [loop] for(int i=0;i<10000;i++){ if(i>=count) break; z=gc_cmul(z,z)+c; if(dot(z,z)>4.0) return 0.0; } return 1.0; }");
+            sb.AppendLine("float gc_mandelbrotIter(float x,float y,float iterations,float smoothFlag) { float2 z=float2(0.0,0.0),c=float2(x,y); int count=clamp((int)floor(iterations),1,10000); [loop] for(int i=0;i<10000;i++){ if(i>=count) break; z=gc_cmul(z,z)+c; float m2=dot(z,z); if(m2>4.0){ float n=i+1.0; if(smoothFlag>0.5){ float mag=sqrt(m2); n=n+1.0-log(log(max(mag,2.000001)))/log(2.0); } return saturate(n/(count+1.0)); } } return 1.0; }");
+            sb.AppendLine("float gc_juliaMask(float x,float y,float cr,float ci,float iterations) { float2 z=float2(x,y),c=float2(cr,ci); int count=clamp((int)floor(iterations),1,10000); [loop] for(int i=0;i<10000;i++){ if(i>=count) break; z=gc_cmul(z,z)+c; if(dot(z,z)>4.0) return 0.0; } return 1.0; }");
+            sb.AppendLine("float gc_juliaIter(float x,float y,float cr,float ci,float iterations,float smoothFlag) { float2 z=float2(x,y),c=float2(cr,ci); int count=clamp((int)floor(iterations),1,10000); [loop] for(int i=0;i<10000;i++){ if(i>=count) break; z=gc_cmul(z,z)+c; float m2=dot(z,z); if(m2>4.0){ float n=i+1.0; if(smoothFlag>0.5){ float mag=sqrt(m2); n=n+1.0-log(log(max(mag,2.000001)))/log(2.0); } return saturate(n/(count+1.0)); } } return 1.0; }");
             sb.AppendLine();
-            sb.Append("float GraphFunction(").Append(string.Join(", ", arguments)).AppendLine(")");
+            sb.Append(returnsComplex ? "float2 GraphFunction(" : "float GraphFunction(").Append(string.Join(", ", arguments)).AppendLine(")");
             sb.AppendLine("{");
             sb.Append("    return ").Append(body).AppendLine(";");
             sb.AppendLine("}");

@@ -5,7 +5,7 @@ namespace GraphCalculator
 {
     public sealed class WorkspaceFile
     {
-        public int Version { get; set; } = 8;
+        public int Version { get; set; } = 9;
         public string WorkspaceMode { get; set; } = "FunctionLab";
         public bool Is3DMode { get; set; }
         public PlotViewport PlotViewport { get; set; } = new(-10, 10, -10, 10);
@@ -19,6 +19,7 @@ namespace GraphCalculator
         public double TimelineTime { get; set; } = 0;
         public double TimelineSpeed { get; set; } = 1;
         public bool TimelineLoop { get; set; } = true;
+        public string HlslScratchText { get; set; } = string.Empty;
         public bool ShowDerivative { get; set; }
         public bool ComparisonEnabled { get; set; }
         public string ComparisonMode { get; set; } = "A - B";

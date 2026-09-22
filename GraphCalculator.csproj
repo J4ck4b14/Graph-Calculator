@@ -6,6 +6,14 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <ApplicationIcon>Assets\CalcLogo.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="Assets\CalcLogo.ico" />
+    <None Remove="Assets\CalcLogo-64.png" />
+    <Resource Include="Assets\CalcLogo.ico" />
+    <Resource Include="Assets\CalcLogo-64.png" />
+  </ItemGroup>
 
 </Project>

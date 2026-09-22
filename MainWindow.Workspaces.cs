@@ -32,6 +32,7 @@ namespace GraphCalculator
             {
                 1 => WorkspaceMode.CurveDesigner,
                 2 => WorkspaceMode.EconomyDesigner,
+                3 => WorkspaceMode.HlslLab,
                 _ => WorkspaceMode.FunctionLab
             };
             SetWorkspaceMode(mode, updateCombo: false);
@@ -41,11 +42,18 @@ namespace GraphCalculator
         {
             _workspaceMode = mode;
             if (updateCombo && WorkspaceModeComboBox != null)
-                WorkspaceModeComboBox.SelectedIndex = mode switch { WorkspaceMode.CurveDesigner => 1, WorkspaceMode.EconomyDesigner => 2, _ => 0 };
+                WorkspaceModeComboBox.SelectedIndex = mode switch
+                {
+                    WorkspaceMode.CurveDesigner => 1,
+                    WorkspaceMode.EconomyDesigner => 2,
+                    WorkspaceMode.HlslLab => 3,
+                    _ => 0
+                };
 
             bool function = mode == WorkspaceMode.FunctionLab;
             bool curve = mode == WorkspaceMode.CurveDesigner;
             bool economy = mode == WorkspaceMode.EconomyDesigner;
+            bool hlsl = mode == WorkspaceMode.HlslLab;
             if (!economy)
             {
                 _economyPlaying = false;
@@ -54,10 +62,14 @@ namespace GraphCalculator
 
             CurveDesignerLeftPanel.Visibility = curve ? Visibility.Visible : Visibility.Collapsed;
             EconomyDesignerLeftPanel.Visibility = economy ? Visibility.Visible : Visibility.Collapsed;
+            HlslLabLeftPanel.Visibility = hlsl ? Visibility.Visible : Visibility.Collapsed;
             EconomyWorkspacePanel.Visibility = economy ? Visibility.Visible : Visibility.Collapsed;
+            HlslWorkspacePanel.Visibility = hlsl ? Visibility.Visible : Visibility.Collapsed;
+            OnHlslWorkspaceVisibilityChanged(hlsl);
 
             FunctionGraphToolbar.Visibility = function ? Visibility.Visible : Visibility.Collapsed;
             CurveGraphToolbar.Visibility = curve ? Visibility.Visible : Visibility.Collapsed;
+            GraphToolsTabs.Visibility = (function || curve) ? Visibility.Visible : Visibility.Collapsed;
             TimelinePanel.Visibility = function ? Visibility.Visible : Visibility.Collapsed;
             AnalysisToolsPanel.Visibility = function ? Visibility.Visible : Visibility.Collapsed;
 
@@ -83,7 +95,7 @@ namespace GraphCalculator
                 InteractionHintText.Text = "Click to add · drag keys/handles · Alt+drag to pan · wheel to zoom";
                 RenderCurveDesigner();
             }
-            else
+            else if (economy)
             {
                 GraphHeadingText.Text = "Economy Designer";
                 InteractionHintText.Text = "Drag nodes · connect flows · formulas drive rates";
@@ -92,12 +104,28 @@ namespace GraphCalculator
                 RenderEconomyChart();
                 UpdateEconomyDiagnostics();
             }
+            else
+            {
+                GraphHeadingText.Text = "HLSL Lab";
+                PlotRangePanel.Visibility = Visibility.Collapsed;
+                SurfaceRangePanel.Visibility = Visibility.Collapsed;
+                SurfaceViewport3D.Visibility = Visibility.Collapsed;
+                PlotCanvas.Visibility = Visibility.Visible;
+                SurfaceLegend.Visibility = Visibility.Collapsed;
+                InteractionHintText.Text = "Write HLSL → Compile & Run → inspect real compiler output and live shader";
+                RefreshHlslPreviewIfEmpty();
+                if (HlslWorkspaceTabControl != null && HlslWorkspaceTabControl.SelectedIndex < 0) HlslWorkspaceTabControl.SelectedIndex = 0;
+            }
+
+            EnsureGraphToolsTabSelection();
+            UpdateDynamicsInspector();
 
             FooterHintText.Text = mode switch
             {
                 WorkspaceMode.CurveDesigner => "Visual curve asset · Bézier-style tangents · extrapolation · analytic approximation suggestions",
                 WorkspaceMode.EconomyDesigner => "Typed flows · scenarios · stochastic prediction · portable .gceconomy projects",
-                _ => "Enter refreshes immediately · Esc clears the active expression"
+                WorkspaceMode.HlslLab => "Editable HLSL · real ps_3_0 compile diagnostics · live GPU preview · searchable shader reference",
+                _ => "Enter adds a line · Ctrl+Enter refreshes immediately · Ctrl+Space suggests functions · Esc clears the active expression"
             };
         }
     }

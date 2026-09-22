@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.IO;
+using IOPath = System.IO.Path;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
@@ -37,15 +38,14 @@ namespace GraphCalculator
         private bool _economyReplayMode;
         private double _economyReplayTime;
         private Guid? _economyBreakpointLinkId;
-        private bool _economyBreakHit;
         private readonly List<EconomyNode> _economyClipboardNodes = [];
         private readonly List<EconomyLink> _economyClipboardLinks = [];
 
-        private string RecoveryDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GraphCalculator");
-        private string RecoveryFilePath => Path.Combine(RecoveryDirectory, "workspace-recovery.json");
-        private string RecentFilePath => Path.Combine(RecoveryDirectory, "recent-workspaces.json");
+        private string RecoveryDirectory => IOPath.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GraphCalculator");
+        private string RecoveryFilePath => IOPath.Combine(RecoveryDirectory, "workspace-recovery.json");
+        private string RecentFilePath => IOPath.Combine(RecoveryDirectory, "recent-workspaces.json");
 
-        private void InitializeIntegrationPass()
+        private void InitializeProjectIntegration()
         {
             _projectAutosaveTimer.Tick += (_, _) => WriteRecoveryFile();
             SharedAssetsListBox.ItemsSource = SharedAssets;
@@ -75,11 +75,16 @@ namespace GraphCalculator
             if ((Keyboard.Modifiers & ModifierKeys.Control) == 0) return;
             if (e.Key == Key.S)
             {
-                if (!string.IsNullOrWhiteSpace(_currentWorkspacePath))
-                {
+                if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) || string.IsNullOrWhiteSpace(_currentWorkspacePath))
+                    SaveWorkspaceButton_Click(this, new RoutedEventArgs());
+                else
                     SaveWorkspaceDirect(_currentWorkspacePath!);
-                    e.Handled = true;
-                }
+                e.Handled = true;
+            }
+            else if (e.Key == Key.O)
+            {
+                LoadWorkspaceButton_Click(this, new RoutedEventArgs());
+                e.Handled = true;
             }
             else if (e.Key == Key.G && _workspaceMode == WorkspaceMode.EconomyDesigner)
             {
@@ -143,6 +148,7 @@ namespace GraphCalculator
             {
                 TimestampUtc = DateTime.UtcNow,
                 WorkspaceMode = _workspaceMode.ToString(),
+                HlslScratchText = HlslPreviewTextBox?.Text ?? string.Empty,
                 Expressions = Expressions.Select(e => new WorkspaceExpression
                 {
                     Expression = e.Expression, IsVisible = e.IsVisible,
@@ -242,6 +248,7 @@ namespace GraphCalculator
                 foreach (WorkspaceEconomyScenario source in state.EconomyScenarios) EconomyScenarios.Add(new EconomyScenario { Name = source.Name, ParameterValues = new Dictionary<string, double>(source.ParameterValues ?? new Dictionary<string, double>(), StringComparer.OrdinalIgnoreCase) });
                 foreach (WorkspaceEconomyCohort source in state.EconomyCohorts) EconomyCohorts.Add(new EconomyCohort { Name = source.Name, Weight = source.Weight, ParameterValues = new Dictionary<string, double>(source.ParameterValues ?? new Dictionary<string, double>(), StringComparer.OrdinalIgnoreCase) });
                 foreach (WorkspaceEconomyTarget source in state.EconomyTargets) EconomyTargets.Add(new EconomyTarget { NodeId = source.NodeId, NodeName = source.NodeName, Minimum = source.Minimum, Maximum = source.Maximum, Weight = source.Weight });
+                if (HlslPreviewTextBox != null) HlslPreviewTextBox.Text = state.HlslScratchText ?? string.Empty;
             }
             finally { _loadingWorkspace = false; }
             SetWorkspaceMode(Enum.TryParse(state.WorkspaceMode, out WorkspaceMode mode) ? mode : WorkspaceMode.FunctionLab, true);
@@ -252,12 +259,12 @@ namespace GraphCalculator
 
         private void RememberRecentWorkspace(string path)
         {
-            path = Path.GetFullPath(path);
+            path = IOPath.GetFullPath(path);
             _recentWorkspacePaths.RemoveAll(p => p.Equals(path, StringComparison.OrdinalIgnoreCase));
             _recentWorkspacePaths.Insert(0, path);
             while (_recentWorkspacePaths.Count > 10) _recentWorkspacePaths.RemoveAt(_recentWorkspacePaths.Count - 1);
             RecentWorkspaceComboBox.ItemsSource = null;
-            RecentWorkspaceComboBox.ItemsSource = _recentWorkspacePaths.Select(Path.GetFileName).ToList();
+            RecentWorkspaceComboBox.ItemsSource = _recentWorkspacePaths.Select(IOPath.GetFileName).ToList();
             RecentWorkspaceComboBox.SelectedIndex = _recentWorkspacePaths.Count > 0 ? 0 : -1;
             try
             {
@@ -275,7 +282,7 @@ namespace GraphCalculator
                     _recentWorkspacePaths.AddRange(JsonSerializer.Deserialize<List<string>>(File.ReadAllText(RecentFilePath))?.Where(File.Exists) ?? []);
             }
             catch { }
-            RecentWorkspaceComboBox.ItemsSource = _recentWorkspacePaths.Select(Path.GetFileName).ToList();
+            RecentWorkspaceComboBox.ItemsSource = _recentWorkspacePaths.Select(IOPath.GetFileName).ToList();
             if (_recentWorkspacePaths.Count > 0) RecentWorkspaceComboBox.SelectedIndex = 0;
         }
 
@@ -405,10 +412,10 @@ namespace GraphCalculator
                 }
                 rows = rows.OrderBy(r => r.X).ToList();
                 if (rows.Count < 2) throw new InvalidDataException("The file needs at least two numeric rows.");
-                string name = NormalizeAssetName(Path.GetFileNameWithoutExtension(dialog.FileName), $"Table{ImportedTables.Count + 1}");
+                string name = NormalizeAssetName(IOPath.GetFileNameWithoutExtension(dialog.FileName), $"Table{ImportedTables.Count + 1}");
                 var table = new ImportedTable { Name = name, Rows = rows };
                 ImportedTables.Add(table);
-                UpsertSharedAsset(new SharedAsset { Name = name, Kind = SharedAssetKind.Table, ParameterName = "x", Formula = BuildLinearTableFormula(rows), Points = rows, Description = Path.GetFileName(dialog.FileName) });
+                UpsertSharedAsset(new SharedAsset { Name = name, Kind = SharedAssetKind.Table, ParameterName = "x", Formula = BuildLinearTableFormula(rows), Points = rows, Description = IOPath.GetFileName(dialog.FileName) });
                 ImportedTablesListBox.SelectedItem = table;
             }
             catch (Exception ex) { MessageBox.Show(this, ex.Message, "Could not import table", MessageBoxButton.OK, MessageBoxImage.Error); }
@@ -580,7 +587,7 @@ namespace GraphCalculator
             if (_selectedEconomyNode?.Kind != EconomyNodeKind.Action) return;
             _selectedEconomyNode.ActionQueued = true;
             EconomyFlowStatusText.Text = $"Queued action: {_selectedEconomyNode.Name}";
-            if (!_economyPlaying) StepEconomy(ReadEconomyDt(), true);
+            if (!_economyPlaying) EconomySimulationStep(ReadEconomyDt(), render: true);
         }
 
         private void EconomySelectNodeForMultiEdit(EconomyNode node)
@@ -1030,7 +1037,7 @@ namespace GraphCalculator
             while (EconomyDebugEvents.Count > 250) EconomyDebugEvents.RemoveAt(EconomyDebugEvents.Count - 1);
             if (_economyBreakpointLinkId == link.Id && accepted > 1e-10)
             {
-                _economyBreakHit = true; _economyPlaying = false; _economyTimer.Stop();
+                _economyPlaying = false; _economyTimer.Stop();
                 EconomyBreakpointText.Text = $"Paused at t={_economyTime:0.###}: {flow}";
             }
         }
@@ -1091,6 +1098,7 @@ namespace GraphCalculator
     {
         public DateTime TimestampUtc { get; set; }
         public string WorkspaceMode { get; set; } = "FunctionLab";
+        public string HlslScratchText { get; set; } = string.Empty;
         public List<WorkspaceExpression> Expressions { get; set; } = [];
         public List<WorkspaceParameter> Parameters { get; set; } = [];
         public string CurveBeforeMode { get; set; } = "Clamp";

@@ -2,11 +2,12 @@
 
 Graph Calculator is a local Windows desktop tool for **seeing, shaping, testing and simulating mathematical behaviour**.
 
-It began as a conventional graphing calculator, but it now has three connected workspaces:
+It began as a conventional graphing calculator, but it now has four connected workspaces:
 
 1. **Function Lab** — write mathematics and see what it does.
 2. **Curve Designer** — draw the behaviour you want and let the app generate the mathematics.
 3. **Economy Designer** — connect gameplay resources into a running, stochastic system and test whether the economy behaves the way you intended.
+4. **HLSL Lab** — write, compile and run pixel-shader HLSL live, with optional Function Lab translation and a searchable GPU reference.
 
 You do **not** need to be a mathematician to use it. The first half of this README explains the tool in ordinary language and gives concrete workflows. The later sections act as a technical reference for designers, technical artists, VFX artists, programmers and technical designers who want to know exactly what the app is doing.
 
@@ -34,6 +35,8 @@ You do **not** need to be a mathematician to use it. The first half of this READ
 - [Save/load](#saveload)
 - [Export and capture](#export-and-capture)
 - [Expression language reference](#expression-language-reference)
+- [Complex maths, calculus and recurrence](#complex-maths-calculus-and-recurrence)
+- [HLSL Lab and dictionary](#hlsl-lab-and-dictionary)
 - [Render quality](#render-quality)
 - [Common workflows](#common-workflows)
 - [Common mistakes and troubleshooting](#common-mistakes-and-troubleshooting)
@@ -55,9 +58,13 @@ The project intentionally does not ship an old compiled `bin` build. Rebuilding 
 
 ---
 
-# The three workspaces in one minute
+# The four workspaces in one minute
 
 The workspace selector is at the top of the window.
+
+Function/curve graph tools use a **shared horizontal tray** above the graph. Timeline, 2D/3D view, inspection tools and the contextual Dynamics tools are tabs in the same space, so opening one replaces the previous tool instead of stacking another vertical panel above the graph.
+
+The moon/sun button switches the whole window between dark and light themes. Theme resources also cover stock WPF control chrome, including combo boxes, tabs, popups and disabled controls, so text remains readable in either mode.
 
 ## Function Lab
 
@@ -121,6 +128,14 @@ Then you press **Play** and watch the resource move through the system.
 You can add randomness, schedules, delays, player cohorts, scenarios, predictions and target-driven balance searches.
 
 Economy Designer is **systems behaviour → simulation and evidence**.
+
+## HLSL Lab
+
+Write HLSL directly or translate a compatible Function Lab expression into the editor. **Compile & Run** sends the editor text through the Windows Direct3D shader compiler and loads the resulting pixel-shader bytecode into the live WPF preview. Compiler failures are shown as compiler diagnostics instead of being hidden behind a CPU approximation.
+
+The searchable dictionary covers both Graph Calculator functions and practical HLSL concepts, so the same workspace can act as a quick reference for an experienced technical artist or a guided bridge for someone learning shader code.
+
+HLSL Lab is **write/translate → compile → see the shader run → iterate**.
 
 ---
 
@@ -1931,7 +1946,7 @@ u
 v
 ```
 
-Availability depends on the plot type.
+Availability depends on the plot type. In complex expressions, `i` is the imaginary unit. In `complexmap(...)`, `z` means `x + iy`.
 
 ## Shorthand
 
@@ -1949,6 +1964,13 @@ Ordinary explicit plots may optionally use:
 ```text
 y = ...
 z = ...
+```
+
+Function-style notation is also accepted as input sugar, including complex notation:
+
+```text
+f(x) = sin(x)/x
+f(z) = exp(z)/(z^2+1)
 ```
 
 ## Unary functions
@@ -2019,6 +2041,276 @@ Press **Ctrl+Space** while editing an expression to open function suggestions.
 ## Inline errors
 
 Expression errors appear underneath the relevant entry instead of silently failing.
+
+---
+
+# Complex maths, calculus and recurrence
+
+## Multiline expression rows
+
+Function Lab expression rows are multiline editors. **Enter** inserts a new line; **Ctrl+Enter** reparses and renders immediately. Top-level newlines and semicolons are interchangeable for systems, so these two inputs mean the same thing:
+
+```text
+z[n+1]=z[n]^2+c
+z[0]=0
+N=80
+radius=2
+```
+
+```text
+z[n+1]=z[n]^2+c; z[0]=0; N=80; radius=2
+```
+
+Line breaks *inside* parentheses are ordinary whitespace, so long vector-valued definitions can be formatted for readability rather than forced onto one line.
+
+## Natural mathematical notation
+
+Function Lab also understands common equation and vector-function notation directly. The wrapper forms such as `implicit3(...)` and `surface(...)` still work, but they are no longer required for ordinary cases.
+
+```text
+y = sin(x)
+x^2 + y^2 = 1
+y^2 + z^2 = 1/x^2
+r(t) = (cos(t), sin(t))
+r(t) = (cos(t), sin(t), t/4)
+r(u,v) = (u, cos(v)/u, sin(v)/u)
+F(x,y) = (-y, x)
+f(z) = (z^3-1)/(z^3+1)
+```
+
+The editor infers the plot kind from the statement: explicit scalar graph, 2D implicit contour, 3D implicit surface, parametric curve/surface, vector field, or complex domain map. Argument names in function definitions are author-facing: for example `r(a,b)=(...)` is internally mapped to the surface parameters `u,v`. Use the Domain / range expander to set the parameter intervals.
+
+For example, Gabriel's horn can be entered exactly as it appears in mathematics:
+
+```text
+y^2+z^2=1/x^2
+```
+
+or parametrically:
+
+```text
+r(u,v)=(u,cos(v)/u,sin(v)/u)
+```
+
+Set `u` (or the implicit `x` domain) to start at `1`.
+
+Function Lab now has a second evaluator for expressions that need more than ordinary real arithmetic. Normal real expressions still use the original fast path; complex/calculus/iterative expressions switch to the advanced evaluator automatically.
+
+## Complex values
+
+These are valid expressions:
+
+```text
+3+4i
+exp(i*x)
+re(exp(i*x))
+abs(2-3i)
+arg(z)
+conj(z)
+polar(2,pi/3)
+```
+
+For a visual complex function, use domain colouring:
+
+```text
+complexmap((z^3-1)/(z^3+1))
+```
+
+or the equivalent function-style notation:
+
+```text
+complexmap(f(z)=(z^3-1)/(z^3+1))
+```
+
+The phase of the result becomes hue and magnitude affects brightness, which makes zeros, poles and winding visible without forcing a complex value onto a normal Y axis.
+
+Useful complex helpers include `complex`, `re`/`real`, `im`/`imag`, `abs`, `arg`/`phase`, `conj`, `cis`, `polar`, `csqrt`, `clog`, `cexp`, `csin`, `ccos` and `ctan`. Ordinary `sin`, `cos`, `tan`, `sqrt`, `ln`, `log` and `exp` also become complex-aware when their input is complex.
+
+## Numerical calculus
+
+```text
+derivative(sin(x),x)
+integral(exp(-x^2),x,-2,2)
+primitive(sin(x),x,0)
+```
+
+`derivative` uses a central numerical difference and can operate on a complex variable (sampling along its real direction). `integral` and `primitive` use bounded Simpson integration. Complex-valued integrands and complex bounds are allowed; complex bounds use the straight segment between the endpoints as the contour. Optional final arguments let advanced users control the step size / integration sample count.
+
+Finite series are available too:
+
+```text
+sum(1/k^2,k,1,1000)
+product(1+1/k,k,1,20)
+```
+
+## Recurrence and iteration
+
+You can write a recurrence in compact evaluator form **or in paper-style sequence notation**. Inside a recurrence, `z` is the previous value and `n` is the zero-based iteration index. Values may be real or complex.
+
+```text
+iterate(z^2-0.1,0.2,20)
+recurrence(z[n+1]=z[n]^2-0.1, z[0]=0.2, 20)
+```
+
+The sequence symbol is not restricted to `z`; `a[n+1]=...`, `w[n+1]=...`, and similar names work. LaTeX-like subscripts are accepted as typing sugar too:
+
+```text
+recurrence(z_{n+1}=z_n^2+c, z_0=0, 80)
+```
+
+For 2D escape-time work, `c` is automatically bound to the sampled point `x+iy`:
+
+```text
+texture(escape(z[n+1]=z[n]^2+c,z[0]=0,80,2)/81)
+```
+
+A recurrence equation by itself, such as `z[n+1]=z[n]^2+c`, is mathematically incomplete for evaluation because it has no initial value or iteration count. The expression editor is multiline, so the most readable form is one statement per line:
+
+```text
+z[n+1]=z[n]^2+c
+z[0]=0
+N=80
+```
+
+Newlines and semicolons are equivalent **at top level**. A newline inside parentheses remains part of the same vector/function expression, so long formulas can be formatted normally. **Enter** inserts a line; **Ctrl+Enter** forces an immediate refresh.
+
+Add an escape radius to turn the same recurrence into a normalized scalar field. `escape(...)` returns `N+1` for a value that survives all `N` steps, keeping survival distinct from an escape on the final step:
+
+```text
+z[n+1]=z[n]^2+c
+z[0]=0
+N=max(1,floor(1+8*t))
+radius=2
+```
+
+The convenience helpers are intentionally still available when the generic form would just be noise. There are two different Mandelbrot views, and they are useful for different jobs:
+
+```text
+texture(mandelbrot(x,y,max(1,floor(1+8*t))))
+texture(mandelbrotsmooth(x,y,120))
+texture(juliasmooth(x,y,-0.8,0.156,80))
+```
+
+`mandelbrot(...)` is the finite-iteration survivor mask. At one iteration the surviving region is the radius-2 circle; increasing the count literally carves that circle toward the Mandelbrot set. `mandelbrotsmooth(...)` is escape-time colouring for boundary detail, so it is better for a developed/static fractal than for demonstrating that construction. To see the entire first circle, use a viewport around `[-2.2,2.2]` on both axes; the familiar close Mandelbrot viewport crops it.
+
+Safety limits cap generic loops and numerical integration so a typo cannot accidentally request billions of evaluations.
+
+---
+
+# Differential equations and dynamical systems
+
+Function Lab can integrate first-order ODEs with an RK4 solver. Write derivatives as `dname/dt=...` or `name'=...`, then give every state an initial condition at the same starting time. State names do not have to be `x`, `y` or `z`.
+
+A one-state ODE is plotted as **state versus time**:
+
+```text
+dy/dt=-0.8*y
+y(0)=1
+```
+
+Set the primary domain to `t: 0 → 8`.
+
+A two-state system is plotted as a **phase trajectory**. For a Van der Pol oscillator:
+
+```text
+dx/dt=y
+dy/dt=(1-x^2)*y-x
+x(0)=2
+y(0)=0
+```
+
+Use `t: 0 → 30`. The graph is `(x(t), y(t))`, so the closed/near-closed shape is the phase-space orbit rather than two separate time-series curves.
+
+State names can be descriptive. This Lotka–Volterra block:
+
+```text
+dprey/dt=1.1*prey-0.4*prey*predator
+dpredator/dt=0.1*prey*predator-0.4*predator
+prey(0)=10
+predator(0)=5
+```
+
+is internally mapped to a 2D state vector while the authored names remain readable. Try `t: 0 → 35`.
+
+Three-state systems become **3D trajectories**. Switch Function Lab to 3D and paste the Lorenz system:
+
+```text
+dx/dt=10*(y-x)
+dy/dt=x*(28-z)-y
+dz/dt=x*y-(8/3)*z
+x(0)=1
+y(0)=1
+z(0)=1
+```
+
+Use `t: 0 → 35`. A suitable starting view is roughly `x: -25 → 25`, `y: -35 → 35`, `z: 0 → 55`.
+
+The solver uses bounded RK4 steps and stops producing valid samples if a trajectory becomes non-finite or blows up. CSV export supports 1D, 2D and 3D dynamical trajectories. HLSL export for a dynamical system exports the **derivative field**, not a fake implicit GPU integrator; you choose the integration loop appropriate to the shader/game context.
+
+## Superformula without the wall of `pow(...)`
+
+The app now exposes the Gielis superformula directly:
+
+```text
+superformula(angle,m,n1,n2,n3,a,b)
+```
+
+So instead of hand-writing the long radius expression, use it inside a parametric curve:
+
+```text
+r(t)=(
+  superformula(t,7,0.3,0.2,1.7,1,1)*cos(t),
+  superformula(t,7,0.3,0.2,1.7,1,1)*sin(t)
+)
+```
+
+Set `t: 0 → 2*pi`. Change `m`, `n1`, `n2`, `n3`, `a` and `b` to move through star-like, polygonal and organic profiles. There is a **Superformula flower** preset so you can start from a visible result and edit parameters rather than memorising the equation.
+
+# HLSL Lab and dictionary
+
+Choose **HLSL Lab** in the top workspace selector, use the visible **HLSL Lab** button in Function Lab's toolbar, or use **Math reference → Open HLSL Lab**.
+
+The shader editor is the source of truth. Press **Compile & Run** to compile the current editor text as a WPF-compatible `ps_3_0` pixel shader. A successful compile drives the **Live preview** directly; a failed compile leaves the previous successful shader visible and reports the real compiler diagnostics.
+
+Two authoring styles are supported.
+
+For quick experiments, define `GraphFunction`:
+
+```hlsl
+float GraphFunction(float x, float y, float time)
+{
+    return 0.5 + 0.5 * sin(x * 4.0 + time);
+}
+```
+
+The lab wraps it in the pixel-shader entry point. `x` and `y` come from the Live preview range and `time`/`t` comes from the live clock. `float`, `float2`, `float3` and `float4` return types are visualised automatically.
+
+For full control, write the pixel-shader entry point yourself:
+
+```hlsl
+float4 main(float2 uv : TEXCOORD0) : COLOR0
+{
+    float2 p = gc_mapUv(uv);
+    return float4(0.5 + 0.5 * sin(p.x + gc_time), 0.2, 0.8, 1.0);
+}
+```
+
+The preview reserves `gc_time`, `gc_minX`, `gc_maxX`, `gc_minY`, `gc_maxY`, `gc_width`, `gc_height`, and the helper `gc_mapUv(uv)`. These live-preview constants use high `ps_3_0` constant registers so ordinary shader code is unlikely to collide with them.
+
+- **Translate** remains an optional bridge from a compatible Function Lab expression into editable HLSL.
+- **New scratch** starts from a runnable animated shader instead of an inert code fragment.
+- **Play/Pause** and **Restart** control `gc_time`.
+- The **Live preview** range controls define the mathematical x/y coordinates used by `GraphFunction` and `gc_mapUv`.
+- **Compiler output** contains actual Direct3D compiler diagnostics.
+- **Starter templates** are complete runnable examples: animated plasma, Mandelbrot escape, SDF circles, value noise and complex domain colouring.
+- **Calculator source** remains available only as an optional CPU-side comparison view; it is not the HLSL preview.
+- **Copy** and **Save .hlsl** operate on the exact editor text.
+- The **Dictionary** searches Graph Calculator functions and HLSL concepts such as vector types, swizzles, derivatives, loops, texture sampling and complex-number helpers. Double-clicking an entry appends its signature and notes to the editor as comments.
+- Shader scratch text is stored in `.graphcalc` workspaces and autosave recovery state.
+
+The WPF runtime accepts Direct3D-era pixel shaders, so the embedded preview targets **pixel shader 3.0**. Modern engine-only HLSL can still be edited and saved, but syntax/features outside that target correctly fail the embedded compiler instead of being simulated. Generated Mandelbrot/Julia loops are capped only in the live `ps_3_0` compile path; the editor text and saved `.hlsl` are not rewritten.
+
+Complex expressions can export as `float2`; scalar expressions export as `float`. ODE/dynamical-system expressions export a `DynamicsDerivative(...)` function while RK4 integration stays CPU-side, because a game/shader may want a different integration strategy.
 
 ---
 
@@ -2189,7 +2481,7 @@ It does not try to replace:
 - Mathematica / Maple / a full CAS,
 - a spreadsheet,
 - a dedicated statistics package,
-- a full shader editor,
+- a modern shader-model IDE/debugger; the embedded HLSL Lab compiles and runs WPF-compatible `ps_3_0` pixel shaders and still exports editor text for external engine toolchains,
 - a production telemetry platform,
 - a full discrete-event manufacturing simulator.
 
@@ -2445,3 +2737,33 @@ That distinction is intentional:
 ```
 
 Both are local readable JSON formats.
+
+## Dynamics tools
+
+Dynamical systems expose a **Dynamics** tab only while a 1D, 2D, or 3D ODE system is actually visible. It does not behave like a permanent inspector.
+
+The main graph remains the mathematical trajectory: for a 2-state system such as Lotka–Volterra, the horizontal axis is the first state variable and the vertical axis is the second. The graph labels those axes with the authored state names and can show the initial state plus direction arrows.
+
+The Dynamics tab keeps only the useful inspection tools:
+
+- a compact live readout such as `t=3.2 · prey 1.8 ↓ (-0.4) · predator 4.1 ↑ (+0.2)`;
+- **Time series**, which plots every state against `t` and follows the timeline with a vertical playhead;
+- **Table**, which samples numerical states and can show derivative columns with `↑`, `↓`, or `→` alongside their values.
+
+The short explanation of a phase/state plot is available from the `ⓘ` tooltip instead of occupying a permanent tab. Playing or scrubbing the timeline moves the highlighted state on the trajectory and the playhead in Time series together.
+
+Example:
+
+```text
+dprey/dt=1.1*prey-0.4*prey*predator
+dpredator/dt=0.1*prey*predator-0.4*predator
+
+prey(0)=10
+predator(0)=5
+```
+
+In the phase portrait, `x = prey` and `y = predator`. In Time series, both populations are plotted against time. The table is the same RK4 solution shown numerically.
+
+## Light and dark themes
+
+The main toolbar now has a compact **sun/moon theme button** for Light and Dark modes. Dark is the default in this build. The theme applies to the workspace chrome, expression cards, graph background/grid/axes, overlays, inspectors, HLSL workspace, inputs, tabs, and generated preview surfaces. On supported Windows versions the native title bar follows the selected theme as well.
